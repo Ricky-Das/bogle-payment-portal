@@ -1,5 +1,11 @@
 import React from "react";
-import PaymentContainer from "./components/PaymentContainer";
+import { Routes, Route, Navigate } from "react-router-dom";
+import CartPage from "./pages/CartPage";
+import SignInPage from "./pages/SignInPage";
+import PasswordPage from "./pages/PasswordPage";
+import SmsVerificationPage from "./pages/SmsVerificationPage";
+import BankLinkPage from "./pages/BankLinkPage";
+import ConfirmationPage from "./pages/ConfirmationPage";
 import Logo from "./components/Logo";
 
 function App() {
@@ -14,9 +20,16 @@ function App() {
         </div>
       </nav>
 
-      {/* Main content */}
-      <div className="flex items-center justify-center min-h-[calc(100vh-80px)] p-6">
-        <PaymentContainer />
+      <div className="min-h-[calc(100vh-80px)] p-6">
+        <Routes>
+          <Route path="/" element={<Navigate to="/cart" replace />} />
+          <Route path="/cart" element={<CartPage />} />
+          <Route path="/signin" element={<SignInPage />} />
+          <Route path="/password" element={<PasswordPage />} />
+          <Route path="/sms" element={<SmsVerificationPage />} />
+          <Route path="/bank-link" element={<BankLinkPage />} />
+          <Route path="/confirmation" element={<ConfirmationPage />} />
+        </Routes>
       </div>
     </div>
   );

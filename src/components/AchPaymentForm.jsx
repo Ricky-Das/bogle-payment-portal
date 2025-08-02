@@ -1,10 +1,14 @@
 import React, { useState } from "react";
 import { usePlaidLink } from "react-plaid-link";
+import { useNavigate, useLocation } from "react-router-dom";
 
 function AchPaymentForm() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const initPhone = location.state?.phone || "";
+
   const [form, setForm] = useState({
-    email: "",
-    phone: "",
+    phone: initPhone,
     recurring: true,
     consent: false,
     savePayment: true,
@@ -24,11 +28,25 @@ function AchPaymentForm() {
   };
   const { open, ready } = usePlaidLink(config);
 
+  const formatPhone = (value) => {
+    const digits = value.replace(/\D/g, "");
+    if (digits.length < 4) return digits;
+    if (digits.length < 7) return `(${digits.slice(0, 3)}) ${digits.slice(3)}`;
+    return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(
+      6,
+      10
+    )}`;
+  };
+
   const handleChange = (e) => {
     const { name, type, checked, value } = e.target;
+    let processed = value;
+    if (name === "phone") {
+      processed = formatPhone(value);
+    }
     setForm((prev) => ({
       ...prev,
-      [name]: type === "checkbox" ? checked : value,
+      [name]: type === "checkbox" ? checked : processed,
     }));
   };
 
@@ -43,6 +61,7 @@ function AchPaymentForm() {
     await fakeAchPayment();
     alert("ACH Payment scheduled!");
     setProcessing(false);
+    navigate("/confirmation");
   };
 
   return (
@@ -52,22 +71,19 @@ function AchPaymentForm() {
         <div className="order-2 lg:order-1">
           <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-xl border border-white/20 p-8 lg:p-10">
             <h1 className="text-3xl font-bold text-gray-900 mb-2">
-              Premium Subscription
+              Premium Product
             </h1>
             <p className="text-gray-600 text-lg mb-8">
-              Unlock all features with our premium plan
+              This is the description of the product.
             </p>
-            <div className="space-y-6 mb-8 text-gray-600">
-              <p>Enjoy a $5 discount for ACH payments!</p>
-            </div>
             <div className="border-t border-gray-200 pt-6">
               <div className="flex items-center justify-between mb-3">
-                <span className="text-gray-600">Premium Plan (Monthly)</span>
+                <span className="text-gray-600">Product Price</span>
                 <span className="font-semibold text-gray-900">$49.00</span>
               </div>
               <div className="flex items-center justify-between mb-3">
                 <span className="text-gray-600">ACH Discount</span>
-                <span className="font-semibold text-green-600">- $5.00</span>
+                <span className="font-semibold text-green-600">- $2.45</span>
               </div>
               <div className="flex items-center justify-between mb-3">
                 <span className="text-gray-600">Tax</span>
@@ -75,7 +91,7 @@ function AchPaymentForm() {
               </div>
               <div className="flex items-center justify-between text-lg font-bold text-gray-900 border-t border-gray-200 pt-3">
                 <span>Total</span>
-                <span>$48.90</span>
+                <span>$46.55</span>
               </div>
             </div>
           </div>
@@ -92,32 +108,16 @@ function AchPaymentForm() {
               <div>
                 <label
                   className="block text-sm font-medium text-gray-700 mb-2"
-                  htmlFor="email"
-                >
-                  Email
-                </label>
-                <input
-                  id="email"
-                  name="email"
-                  type="email"
-                  required
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-indigo-500"
-                  value={form.email}
-                  onChange={handleChange}
-                />
-              </div>
-              <div>
-                <label
-                  className="block text-sm font-medium text-gray-700 mb-2"
                   htmlFor="phone"
                 >
-                  Phone (SMS verification)
+                  Phone number
                 </label>
                 <input
                   id="phone"
                   name="phone"
                   type="tel"
                   required
+                  placeholder="(555) 555-5555"
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-indigo-500"
                   value={form.phone}
                   onChange={handleChange}
@@ -130,48 +130,48 @@ function AchPaymentForm() {
                   type="button"
                   disabled={!ready}
                   onClick={open}
-                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-lg"
+                  className={`w-full flex items-center justify-center gap-2 py-3 px-4 rounded-lg font-semibold text-white transition-colors ${
+                    bankLinked
+                      ? "bg-green-600 hover:bg-green-700"
+                      : "bg-[#00B795] hover:bg-[#00917E]"
+                  }`}
                 >
-                  {bankLinked
-                    ? "Bank Account Linked ✓"
-                    : "Connect Bank Account via Plaid"}
+                  {bankLinked ? (
+                    <>
+                      Bank Account Linked
+                      <svg
+                        className="w-5 h-5"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M5 13l4 4L19 7"
+                        />
+                      </svg>
+                    </>
+                  ) : (
+                    <>
+                      Connect with Plaid
+                      <svg
+                        className="w-5 h-5"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M9 5l7 7-7 7"
+                        />
+                      </svg>
+                    </>
+                  )}
                 </button>
-              </div>
-
-              {/* Recurring toggle */}
-              <div className="flex items-center justify-between">
-                <label
-                  htmlFor="recurring"
-                  className="flex-1 text-sm text-gray-700"
-                >
-                  I understand that this is a recurring payment
-                </label>
-                <input
-                  id="recurring"
-                  name="recurring"
-                  type="checkbox"
-                  checked={form.recurring}
-                  onChange={handleChange}
-                  className="w-5 h-5 text-indigo-600 border-gray-300"
-                />
-              </div>
-
-              {/* Save payment method */}
-              <div className="flex items-center justify-between">
-                <label
-                  htmlFor="savePayment"
-                  className="flex-1 text-sm text-gray-700"
-                >
-                  Save payment method for faster checkout
-                </label>
-                <input
-                  id="savePayment"
-                  name="savePayment"
-                  type="checkbox"
-                  checked={form.savePayment}
-                  onChange={handleChange}
-                  className="w-5 h-5 text-indigo-600 border-gray-300"
-                />
               </div>
 
               {/* NACHA consent */}
@@ -203,6 +203,30 @@ function AchPaymentForm() {
                   ? "Processing..."
                   : "Complete ACH Payment • $48.90"}
               </button>
+              {/* Legal disclaimers */}
+              <p className="mt-4 text-[10px] text-gray-500 text-center">
+                By clicking Pay, you agree to the{" "}
+                <a href="#" className="underline">
+                  Link Terms
+                </a>{" "}
+                and{" "}
+                <a href="#" className="underline">
+                  Privacy Policy
+                </a>
+                .
+              </p>
+              <div className="text-[10px] text-gray-500 text-center mt-1">
+                Powered by{" "}
+                <span className="font-semibold text-gray-600">Bogle</span>
+              </div>
+              <div className="flex items-center justify-center gap-4 text-[10px] text-gray-500 mt-1">
+                <a href="#" className="underline">
+                  Terms
+                </a>
+                <a href="#" className="underline">
+                  Privacy
+                </a>
+              </div>
             </form>
           </div>
         </div>

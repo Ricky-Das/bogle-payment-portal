@@ -3,16 +3,21 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
+  "homepage": "https://ricky-das.github.io/bogle-payment-portal",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "predeploy": "npm run build",
+    "deploy": "gh-pages -d dist"
   },
   "dependencies": {
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
+    "react-router-dom": "^6.23.0",
     "react-plaid-link": "^4.0.1",
-    "@adyen/adyen-web": "^5.48.0"
+    "@adyen/adyen-web": "^5.48.0",
+    "gh-pages": "^5.0.0"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.1.0",
