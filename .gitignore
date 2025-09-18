@@ -1,0 +1,23 @@
+# Node & build artifacts
+node_modules/
+dist/
+
+# gh-pages local cache
+node_modules/.cache/gh-pages/
+
+# macOS system files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Terraform
+.terraform/
+.terraform.lock.hcl
+terraform.tfstate
+terraform.tfstate.backup
+*.tfvars
+*.tfvars.json 

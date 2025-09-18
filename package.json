@@ -1,0 +1,33 @@
+{
+  "name": "bogle-payment-portal",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "homepage": "https://ricky-das.github.io/bogle-payment-portal",
+  "scripts": {
+    "dev": "vite",
+    "dev:mock": "concurrently \"npm run mock-server\" \"npm run dev\"",
+    "mock-server": "node dev-server.js",
+    "build": "vite build",
+    "preview": "vite preview",
+    "predeploy": "npm run build",
+    "deploy": "gh-pages -d dist"
+  },
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-router-dom": "^6.23.0",
+    "react-plaid-link": "^4.0.1",
+    "gh-pages": "^5.0.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.1.0",
+    "autoprefixer": "^10.4.14",
+    "concurrently": "^8.2.0",
+    "cors": "^2.8.5",
+    "express": "^4.18.2",
+    "postcss": "^8.4.23",
+    "tailwindcss": "^3.3.1",
+    "vite": "^4.1.0"
+  }
+}
