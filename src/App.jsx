@@ -11,6 +11,8 @@ import BankLinkPage from "./pages/BankLinkPage";
 import PaymentMethodPage from "./pages/PaymentMethodPage";
 import ConfirmationPage from "./pages/ConfirmationPage";
 import Logo from "./components/Logo";
+import { Link } from "react-router-dom";
+import TransactionsPage from "./pages/TransactionsPage";
 
 function App() {
   return (
@@ -20,6 +22,23 @@ function App() {
         <div className="max-w-6xl mx-auto flex items-center justify-between">
           <div className="flex items-center space-x-3">
             <Logo />
+          </div>
+          <div className="flex items-center space-x-4 text-sm">
+            <Link to="/cart" className="text-gray-700 hover:text-blue-600">
+              Cart
+            </Link>
+            <Link
+              to="/payment-method"
+              className="text-gray-700 hover:text-blue-600"
+            >
+              Pay
+            </Link>
+            <Link
+              to="/transactions"
+              className="text-gray-700 hover:text-blue-600"
+            >
+              Transactions
+            </Link>
           </div>
         </div>
       </nav>
@@ -38,6 +57,7 @@ function App() {
           <Route path="/bank-link" element={<BankLinkPage />} /> */}
           <Route path="/payment-method" element={<PaymentMethodPage />} />
           <Route path="/confirmation" element={<ConfirmationPage />} />
+          <Route path="/transactions" element={<TransactionsPage />} />
         </Routes>
       </div>
     </div>

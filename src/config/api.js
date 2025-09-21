@@ -1,31 +1,35 @@
 // API configuration for Bogle Payment Portal
 
 const API_CONFIG = {
-  // This will be set by your deployment process
-  BASE_URL: import.meta.env.VITE_API_URL || import.meta.env.REACT_APP_API_URL || 'http://localhost:3001',
+  // Force production API URL for now (change back to env vars later)
+  BASE_URL: "https://o7h8qusgd9.execute-api.us-east-1.amazonaws.com/prod",
+
+  // Optional API key for API Gateway
+  API_KEY: import.meta.env.VITE_API_KEY || "",
 
   // API endpoints
   ENDPOINTS: {
     // Authentication
-    SIGNIN: '/auth/signin',
-    VERIFY_PHONE: '/auth/verify-phone',
-    VERIFY_SMS: '/auth/verify-sms',
-    REFRESH_TOKEN: '/auth/refresh',
-    GET_USER: '/auth/me',
+    SIGNIN: "/auth/signin",
+    VERIFY_PHONE: "/auth/verify-phone",
+    VERIFY_SMS: "/auth/verify-sms",
+    REFRESH_TOKEN: "/auth/refresh",
+    GET_USER: "/auth/me",
 
     // Bank account validation (without Plaid)
-    VALIDATE_BANK_ACCOUNT: '/payments/validate-bank-account',
+    VALIDATE_BANK_ACCOUNT: "/payments/validate-bank-account",
 
     // Plaid integration
-    PLAID_CREATE_LINK_TOKEN: '/plaid/create-link-token',
-    PLAID_EXCHANGE_PUBLIC_TOKEN: '/plaid/exchange-public-token',
-    PLAID_GET_ACCOUNTS: '/plaid/get-accounts',
+    PLAID_CREATE_LINK_TOKEN: "/plaid/create-link-token",
+    PLAID_EXCHANGE_PUBLIC_TOKEN: "/plaid/exchange-public-token",
+    PLAID_GET_ACCOUNTS: "/plaid/get-accounts",
 
     // Payment processing
-    CREATE_IDENTITY: '/payments/create-identity',
-    CREATE_PAYMENT_INSTRUMENT: '/payments/create-payment-instrument',
-    PROCESS_PAYMENT: '/payments/process-payment',
-    GET_TRANSACTION: '/payments/transaction',
+    CREATE_IDENTITY: "/payments/create-identity",
+    CREATE_PAYMENT_INSTRUMENT: "/payments/create-payment-instrument",
+    PROCESS_PAYMENT: "/payments/process-payment",
+    GET_TRANSACTION: "/payments/transaction",
+    TRANSACTIONS: "/transactions",
   },
 
   // Request timeout in milliseconds
@@ -35,8 +39,8 @@ const API_CONFIG = {
   RETRY: {
     attempts: 3,
     delay: 1000, // Base delay in ms
-    backoff: 2   // Exponential backoff multiplier
-  }
+    backoff: 2, // Exponential backoff multiplier
+  },
 };
 
 // API client class with authentication and error handling
@@ -44,40 +48,41 @@ class ApiClient {
   constructor() {
     this.baseURL = API_CONFIG.BASE_URL;
     this.timeout = API_CONFIG.TIMEOUT;
+    console.log("ApiClient initialized with baseURL:", this.baseURL);
   }
 
   // Get stored auth token
   getAuthToken() {
-    return localStorage.getItem('accessToken');
+    return localStorage.getItem("accessToken");
   }
 
   // Set auth token
   setAuthToken(token) {
     if (token) {
-      localStorage.setItem('accessToken', token);
+      localStorage.setItem("accessToken", token);
     } else {
-      localStorage.removeItem('accessToken');
+      localStorage.removeItem("accessToken");
     }
   }
 
   // Get refresh token
   getRefreshToken() {
-    return localStorage.getItem('refreshToken');
+    return localStorage.getItem("refreshToken");
   }
 
   // Set refresh token
   setRefreshToken(token) {
     if (token) {
-      localStorage.setItem('refreshToken', token);
+      localStorage.setItem("refreshToken", token);
     } else {
-      localStorage.removeItem('refreshToken');
+      localStorage.removeItem("refreshToken");
     }
   }
 
   // Clear all tokens
   clearTokens() {
-    localStorage.removeItem('accessToken');
-    localStorage.removeItem('refreshToken');
+    localStorage.removeItem("accessToken");
+    localStorage.removeItem("refreshToken");
   }
 
   // Make HTTP request with retry logic
@@ -87,8 +92,9 @@ class ApiClient {
 
     const defaultOptions = {
       headers: {
-        'Content-Type': 'application/json',
-        ...(token && { 'Authorization': `Bearer ${token}` }),
+        "Content-Type": "application/json",
+        ...(token && { Authorization: `Bearer ${token}` }),
+        ...(API_CONFIG.API_KEY && { "x-api-key": API_CONFIG.API_KEY }),
         ...options.headers,
       },
       timeout: this.timeout,
@@ -119,13 +125,15 @@ class ApiClient {
           } else {
             // Refresh failed, clear tokens and throw error
             this.clearTokens();
-            throw new Error('Authentication failed');
+            throw new Error("Authentication failed");
           }
         }
 
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({}));
-          throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
+          throw new Error(
+            errorData.error || `HTTP ${response.status}: ${response.statusText}`
+          );
         }
 
         return await response.json();
@@ -135,8 +143,10 @@ class ApiClient {
         }
 
         // Wait before retry with exponential backoff
-        const delay = API_CONFIG.RETRY.delay * Math.pow(API_CONFIG.RETRY.backoff, attempt - 1);
-        await new Promise(resolve => setTimeout(resolve, delay));
+        const delay =
+          API_CONFIG.RETRY.delay *
+          Math.pow(API_CONFIG.RETRY.backoff, attempt - 1);
+        await new Promise((resolve) => setTimeout(resolve, delay));
       }
     }
   }
@@ -147,11 +157,14 @@ class ApiClient {
     if (!refreshToken) return false;
 
     try {
-      const response = await fetch(`${this.baseURL}${API_CONFIG.ENDPOINTS.REFRESH_TOKEN}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refreshToken }),
-      });
+      const response = await fetch(
+        `${this.baseURL}${API_CONFIG.ENDPOINTS.REFRESH_TOKEN}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ refreshToken }),
+        }
+      );
 
       if (response.ok) {
         const data = await response.json();
@@ -159,7 +172,7 @@ class ApiClient {
         return true;
       }
     } catch (error) {
-      console.error('Token refresh failed:', error);
+      console.error("Token refresh failed:", error);
     }
 
     return false;
@@ -168,21 +181,21 @@ class ApiClient {
   // Authentication methods
   async signIn(phone) {
     return this.request(API_CONFIG.ENDPOINTS.SIGNIN, {
-      method: 'POST',
+      method: "POST",
       body: JSON.stringify({ phone }),
     });
   }
 
   async verifyPhone(phone) {
     return this.request(API_CONFIG.ENDPOINTS.VERIFY_PHONE, {
-      method: 'POST',
+      method: "POST",
       body: JSON.stringify({ phone }),
     });
   }
 
   async verifySms(phone, code, password = null) {
     return this.request(API_CONFIG.ENDPOINTS.VERIFY_SMS, {
-      method: 'POST',
+      method: "POST",
       body: JSON.stringify({ phone, code, password }),
     });
   }
@@ -194,7 +207,7 @@ class ApiClient {
   // Bank account validation methods
   async validateBankAccount(routingNumber) {
     return this.request(API_CONFIG.ENDPOINTS.VALIDATE_BANK_ACCOUNT, {
-      method: 'POST',
+      method: "POST",
       body: JSON.stringify({ routingNumber }),
     });
   }
@@ -202,21 +215,21 @@ class ApiClient {
   // Plaid methods
   async createPlaidLinkToken(userId) {
     return this.request(API_CONFIG.ENDPOINTS.PLAID_CREATE_LINK_TOKEN, {
-      method: 'POST',
+      method: "POST",
       body: JSON.stringify({ userId }),
     });
   }
 
   async exchangePlaidPublicToken(publicToken, userId, metadata) {
     return this.request(API_CONFIG.ENDPOINTS.PLAID_EXCHANGE_PUBLIC_TOKEN, {
-      method: 'POST',
+      method: "POST",
       body: JSON.stringify({ publicToken, userId, metadata }),
     });
   }
 
   async getPlaidAccounts(userId) {
     return this.request(API_CONFIG.ENDPOINTS.PLAID_GET_ACCOUNTS, {
-      method: 'POST',
+      method: "POST",
       body: JSON.stringify({ userId }),
     });
   }
@@ -224,27 +237,67 @@ class ApiClient {
   // Payment methods
   async createIdentity(userId, personalInfo) {
     return this.request(API_CONFIG.ENDPOINTS.CREATE_IDENTITY, {
-      method: 'POST',
+      method: "POST",
       body: JSON.stringify({ userId, personalInfo }),
     });
   }
 
-  async createPaymentInstrument(userId, paymentMethod, cardToken = null, bankAccount = null) {
+  async createPaymentInstrument(
+    userId,
+    paymentMethod,
+    cardToken = null,
+    bankAccount = null
+  ) {
     return this.request(API_CONFIG.ENDPOINTS.CREATE_PAYMENT_INSTRUMENT, {
-      method: 'POST',
+      method: "POST",
       body: JSON.stringify({ userId, paymentMethod, cardToken, bankAccount }),
     });
   }
 
   async processPayment(userId, paymentInstrumentId, amount, description) {
     return this.request(API_CONFIG.ENDPOINTS.PROCESS_PAYMENT, {
-      method: 'POST',
-      body: JSON.stringify({ userId, paymentInstrumentId, amount, description }),
+      method: "POST",
+      body: JSON.stringify({
+        userId,
+        paymentInstrumentId,
+        amount,
+        description,
+      }),
     });
   }
 
   async getTransaction(transactionId) {
-    return this.request(`${API_CONFIG.ENDPOINTS.GET_TRANSACTION}/${transactionId}`);
+    return this.request(
+      `${API_CONFIG.ENDPOINTS.GET_TRANSACTION}/${transactionId}`
+    );
+  }
+
+  // Transactions (PostgreSQL) methods
+  async listTransactions(params = {}) {
+    const limit = typeof params.limit === "number" ? params.limit : 50;
+    const offset = typeof params.offset === "number" ? params.offset : 0;
+    const query = new URLSearchParams({
+      limit: String(limit),
+      offset: String(offset),
+    }).toString();
+    return this.request(`${API_CONFIG.ENDPOINTS.TRANSACTIONS}?${query}`, {
+      method: "GET",
+    });
+  }
+
+  async storeTransaction(body) {
+    return this.request(API_CONFIG.ENDPOINTS.TRANSACTIONS, {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+  }
+
+  // Raw process payment allowing flexible body
+  async processPaymentRaw(body) {
+    return this.request(API_CONFIG.ENDPOINTS.PROCESS_PAYMENT, {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
   }
 }
 
