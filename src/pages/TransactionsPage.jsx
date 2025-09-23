@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from "react";
-import apiClient from "../config/api";
 
 function TransactionsPage() {
   const [transactions, setTransactions] = useState([]);
@@ -12,15 +11,8 @@ function TransactionsPage() {
     setIsLoading(true);
     setError(null);
     try {
-      const data = await apiClient.listTransactions({ limit, offset });
-      const items = Array.isArray(data?.items)
-        ? data.items
-        : Array.isArray(data?.transactions)
-        ? data.transactions
-        : Array.isArray(data)
-        ? data
-        : [];
-      setTransactions(items);
+      // Legacy transactions API removed. Keep UI shell with empty state.
+      setTransactions([]);
     } catch (err) {
       setError(err.message || "Failed to load transactions");
     } finally {

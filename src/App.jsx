@@ -33,12 +33,7 @@ function App() {
             >
               Pay
             </Link>
-            <Link
-              to="/transactions"
-              className="text-gray-700 hover:text-blue-600"
-            >
-              Transactions
-            </Link>
+            {/* Transactions link removed with legacy API */}
           </div>
         </div>
       </nav>
@@ -57,7 +52,7 @@ function App() {
           <Route path="/bank-link" element={<BankLinkPage />} /> */}
           <Route path="/payment-method" element={<PaymentMethodPage />} />
           <Route path="/confirmation" element={<ConfirmationPage />} />
-          <Route path="/transactions" element={<TransactionsPage />} />
+          {/* Legacy Transactions route removed */}
         </Routes>
       </div>
     </div>

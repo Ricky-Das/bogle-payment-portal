@@ -43,26 +43,13 @@
     </p>
 
     <div class="test-section">
-      <h3>Test 1: GET /transactions</h3>
-      <button onclick="testGetTransactions()">Test GET Transactions</button>
-      <div id="getResult"></div>
-    </div>
-
-    <div class="test-section">
-      <h3>Test 2: POST /transactions</h3>
-      <button onclick="testPostTransaction()">Test POST Transaction</button>
-      <div id="postResult"></div>
-    </div>
-
-    <div class="test-section">
-      <h3>Test 3: POST /payments/process-payment</h3>
-      <button onclick="testProcessPayment()">Test Process Payment</button>
-      <div id="paymentResult"></div>
+      <h3>Test: POST /v1/checkout-sessions and /v1/payments</h3>
+      <button onclick="runMinimalFlow()">Run Minimal Flow</button>
+      <div id="flowResult"></div>
     </div>
 
     <script>
-      const API_BASE =
-        "https://o7h8qusgd9.execute-api.us-east-1.amazonaws.com/prod";
+      const API_BASE = "https://tstd5z72k1.execute-api.us-east-1.amazonaws.com";
 
       function showResult(elementId, success, message, data = null) {
         const element = document.getElementById(elementId);
@@ -74,120 +61,63 @@
             `;
       }
 
-      async function testGetTransactions() {
+      async function runMinimalFlow() {
         try {
-          const response = await fetch(
-            `${API_BASE}/transactions?limit=3&offset=0`
+          // 1) Create session
+          const createRes = await fetch(`${API_BASE}/v1/checkout-sessions`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              line_items: [
+                {
+                  name: "Test Item",
+                  quantity: 1,
+                  unit_amount: 123,
+                  currency: "USD",
+                },
+              ],
+              success_url: location.href,
+              cancel_url: location.href,
+              customer: { email: "user@example.com", name: "User Name" },
+            }),
+          });
+          const created = await createRes.json();
+          if (!createRes.ok)
+            throw new Error(created?.error || "Failed to create session");
+
+          // 2) Use placeholder Finix token (replace with real token for true test)
+          const dummyToken = "pi_dummy_token";
+          const idempotencyKey =
+            crypto && crypto.randomUUID
+              ? crypto.randomUUID()
+              : `uuid_${Date.now()}`;
+
+          // 3) Confirm payment
+          const payRes = await fetch(`${API_BASE}/v1/payments`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Idempotency-Key": idempotencyKey,
+            },
+            body: JSON.stringify({
+              session_id: created.id,
+              payment_method: {
+                type: "card",
+                card_token: dummyToken,
+                billing_postal_code: "94107",
+              },
+            }),
+          });
+          const pay = await payRes.json();
+
+          showResult(
+            "flowResult",
+            payRes.ok,
+            `Minimal flow response (Status: ${payRes.status})`,
+            pay
           );
-          const data = await response.json();
-
-          if (response.ok) {
-            showResult(
-              "getResult",
-              true,
-              `GET /transactions successful (Status: ${response.status})`,
-              data
-            );
-          } else {
-            showResult(
-              "getResult",
-              false,
-              `GET /transactions failed (Status: ${response.status})`,
-              data
-            );
-          }
-        } catch (error) {
-          showResult("getResult", false, `Network error: ${error.message}`);
-        }
-      }
-
-      async function testPostTransaction() {
-        const testData = {
-          merchant_id: "e3f5ebd0-1e9a-4f02-9d5b-6b1a0e4cc111",
-          idempotency_key: `frontend-test-${Date.now()}`,
-          amount_cents: 2999,
-          currency: "USD",
-          payment_method: "card",
-          direction: "charge",
-          network: "card",
-          status: "pending",
-          description: "Frontend CORS test",
-          customer_email: "test@example.com",
-        };
-
-        try {
-          const response = await fetch(`${API_BASE}/transactions`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify(testData),
-          });
-
-          const data = await response.json();
-
-          if (response.ok) {
-            showResult(
-              "postResult",
-              true,
-              `POST /transactions successful (Status: ${response.status})`,
-              data
-            );
-          } else {
-            showResult(
-              "postResult",
-              false,
-              `POST /transactions failed (Status: ${response.status})`,
-              data
-            );
-          }
-        } catch (error) {
-          showResult("postResult", false, `Network error: ${error.message}`);
-        }
-      }
-
-      async function testProcessPayment() {
-        const paymentData = {
-          merchant_id: "e3f5ebd0-1e9a-4f02-9d5b-6b1a0e4cc111",
-          idempotency_key: `payment-test-${Date.now()}`,
-          amount_cents: 5390,
-          currency: "USD",
-          payment_method: "card",
-          card_token: "PItoken_test123",
-          card_brand: "Visa",
-          card_last_four: "6100",
-          description: "Frontend payment test",
-          metadata: { ui_source: "cors-test" },
-        };
-
-        try {
-          const response = await fetch(`${API_BASE}/payments/process-payment`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify(paymentData),
-          });
-
-          const data = await response.json();
-
-          if (response.ok) {
-            showResult(
-              "paymentResult",
-              true,
-              `POST /payments/process-payment successful (Status: ${response.status})`,
-              data
-            );
-          } else {
-            showResult(
-              "paymentResult",
-              false,
-              `POST /payments/process-payment failed (Status: ${response.status}) - This is expected with test data`,
-              data
-            );
-          }
-        } catch (error) {
-          showResult("paymentResult", false, `Network error: ${error.message}`);
+        } catch (e) {
+          showResult("flowResult", false, e.message || "Flow failed");
         }
       }
     </script>

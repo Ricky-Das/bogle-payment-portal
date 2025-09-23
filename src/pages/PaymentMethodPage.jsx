@@ -1,8 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import CreditCardForm from "../components/CreditCardForm";
-import AchPaymentForm from "../components/AchPaymentForm";
-import apiClient from "../config/api";
 
 const PaymentMethodPage = () => {
   const navigate = useNavigate();
@@ -29,31 +27,6 @@ const PaymentMethodPage = () => {
   const handlePaymentSuccess = async (result) => {
     setPaymentResult(result);
     setError(null);
-
-    try {
-      // Best-effort store transaction if backend is available
-      const amountCents = Math.round(
-        (result.amount || orderDetails.total) * 100
-      );
-      const body = {
-        merchant_id: import.meta.env.VITE_MERCHANT_ID || "default",
-        idempotency_key: result.transactionId || `txn_${Date.now()}`,
-        amount_cents: amountCents,
-        currency: "USD",
-        payment_method: result.paymentMethod,
-        direction: "charge",
-        network: result.paymentMethod === "card" ? "card" : "ach",
-        status: "pending",
-        metadata: {
-          ui_source: "payment-portal",
-        },
-      };
-      await apiClient.storeTransaction(body);
-    } catch (e) {
-      // Non-blocking
-      // eslint-disable-next-line no-console
-      console.warn("Failed to store transaction:", e);
-    }
 
     navigate("/confirmation", {
       state: {

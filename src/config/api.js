@@ -1,308 +1,89 @@
-// API configuration for Bogle Payment Portal
+// New minimal API utility for the Bogle Payment Portal
 
-const API_CONFIG = {
-  // Force production API URL for now (change back to env vars later)
-  BASE_URL: "https://o7h8qusgd9.execute-api.us-east-1.amazonaws.com/prod",
+export const API_BASE =
+  "https://tstd5z72k1.execute-api.us-east-1.amazonaws.com";
 
-  // Optional API key for API Gateway
-  API_KEY: import.meta.env.VITE_API_KEY || "",
+export const generateIdempotencyKey = () =>
+  typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+    ? crypto.randomUUID()
+    : `uuid_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 
-  // API endpoints
-  ENDPOINTS: {
-    // Authentication
-    SIGNIN: "/auth/signin",
-    VERIFY_PHONE: "/auth/verify-phone",
-    VERIFY_SMS: "/auth/verify-sms",
-    REFRESH_TOKEN: "/auth/refresh",
-    GET_USER: "/auth/me",
-
-    // Bank account validation (without Plaid)
-    VALIDATE_BANK_ACCOUNT: "/payments/validate-bank-account",
-
-    // Plaid integration
-    PLAID_CREATE_LINK_TOKEN: "/plaid/create-link-token",
-    PLAID_EXCHANGE_PUBLIC_TOKEN: "/plaid/exchange-public-token",
-    PLAID_GET_ACCOUNTS: "/plaid/get-accounts",
-
-    // Payment processing
-    CREATE_IDENTITY: "/payments/create-identity",
-    CREATE_PAYMENT_INSTRUMENT: "/payments/create-payment-instrument",
-    PROCESS_PAYMENT: "/payments/process-payment",
-    GET_TRANSACTION: "/payments/transaction",
-    TRANSACTIONS: "/transactions",
-  },
-
-  // Request timeout in milliseconds
-  TIMEOUT: 30000,
-
-  // Retry configuration
-  RETRY: {
-    attempts: 3,
-    delay: 1000, // Base delay in ms
-    backoff: 2, // Exponential backoff multiplier
-  },
-};
-
-// API client class with authentication and error handling
-class ApiClient {
-  constructor() {
-    this.baseURL = API_CONFIG.BASE_URL;
-    this.timeout = API_CONFIG.TIMEOUT;
-    console.log("ApiClient initialized with baseURL:", this.baseURL);
+export async function createCheckoutSession(params) {
+  const res = await fetch(`${API_BASE}/v1/checkout-sessions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  });
+  if (!res.ok) {
+    const err = await safeParse(res);
+    throw new Error(err?.error || "Failed to create session");
   }
+  const data = await res.json();
+  return data?.id;
+}
 
-  // Get stored auth token
-  getAuthToken() {
-    return localStorage.getItem("accessToken");
-  }
+export async function confirmPayment(
+  sessionId,
+  cardToken,
+  postalCode,
+  fraudSessionId
+) {
+  const idempotencyKey = generateIdempotencyKey();
 
-  // Set auth token
-  setAuthToken(token) {
-    if (token) {
-      localStorage.setItem("accessToken", token);
-    } else {
-      localStorage.removeItem("accessToken");
-    }
-  }
-
-  // Get refresh token
-  getRefreshToken() {
-    return localStorage.getItem("refreshToken");
-  }
-
-  // Set refresh token
-  setRefreshToken(token) {
-    if (token) {
-      localStorage.setItem("refreshToken", token);
-    } else {
-      localStorage.removeItem("refreshToken");
-    }
-  }
-
-  // Clear all tokens
-  clearTokens() {
-    localStorage.removeItem("accessToken");
-    localStorage.removeItem("refreshToken");
-  }
-
-  // Make HTTP request with retry logic
-  async request(endpoint, options = {}) {
-    const url = `${this.baseURL}${endpoint}`;
-    const token = this.getAuthToken();
-
-    const defaultOptions = {
+  const res = await fetch(`${API_BASE}/v1/payments`, {
+    method: "POST",
       headers: {
         "Content-Type": "application/json",
-        ...(token && { Authorization: `Bearer ${token}` }),
-        ...(API_CONFIG.API_KEY && { "x-api-key": API_CONFIG.API_KEY }),
-        ...options.headers,
+      "Idempotency-Key": idempotencyKey,
+    },
+    body: JSON.stringify({
+      session_id: sessionId,
+      fraud_session_id: fraudSessionId,
+      payment_method: {
+        type: "card",
+        card_token: cardToken,
+        billing_postal_code: postalCode,
       },
-      timeout: this.timeout,
-    };
+    }),
+  });
 
-    const requestOptions = { ...defaultOptions, ...options };
-
-    // Retry logic
-    for (let attempt = 1; attempt <= API_CONFIG.RETRY.attempts; attempt++) {
-      try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), this.timeout);
-
-        const response = await fetch(url, {
-          ...requestOptions,
-          signal: controller.signal,
-        });
-
-        clearTimeout(timeoutId);
-
-        // Handle 401 - try to refresh token
-        if (response.status === 401 && token && attempt === 1) {
-          const refreshed = await this.refreshAccessToken();
-          if (refreshed) {
-            // Retry with new token
-            requestOptions.headers.Authorization = `Bearer ${this.getAuthToken()}`;
-            continue;
-          } else {
-            // Refresh failed, clear tokens and throw error
-            this.clearTokens();
-            throw new Error("Authentication failed");
-          }
-        }
-
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          throw new Error(
-            errorData.error || `HTTP ${response.status}: ${response.statusText}`
-          );
-        }
-
-        return await response.json();
-      } catch (error) {
-        if (attempt === API_CONFIG.RETRY.attempts) {
-          throw error;
-        }
-
-        // Wait before retry with exponential backoff
-        const delay =
-          API_CONFIG.RETRY.delay *
-          Math.pow(API_CONFIG.RETRY.backoff, attempt - 1);
-        await new Promise((resolve) => setTimeout(resolve, delay));
-      }
-    }
-  }
-
-  // Refresh access token
-  async refreshAccessToken() {
-    const refreshToken = this.getRefreshToken();
-    if (!refreshToken) return false;
-
-    try {
-      const response = await fetch(
-        `${this.baseURL}${API_CONFIG.ENDPOINTS.REFRESH_TOKEN}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ refreshToken }),
-        }
-      );
-
-      if (response.ok) {
-        const data = await response.json();
-        this.setAuthToken(data.accessToken);
-        return true;
-      }
-    } catch (error) {
-      console.error("Token refresh failed:", error);
-    }
-
-    return false;
-  }
-
-  // Authentication methods
-  async signIn(phone) {
-    return this.request(API_CONFIG.ENDPOINTS.SIGNIN, {
-      method: "POST",
-      body: JSON.stringify({ phone }),
-    });
-  }
-
-  async verifyPhone(phone) {
-    return this.request(API_CONFIG.ENDPOINTS.VERIFY_PHONE, {
-      method: "POST",
-      body: JSON.stringify({ phone }),
-    });
-  }
-
-  async verifySms(phone, code, password = null) {
-    return this.request(API_CONFIG.ENDPOINTS.VERIFY_SMS, {
-      method: "POST",
-      body: JSON.stringify({ phone, code, password }),
-    });
-  }
-
-  async getCurrentUser() {
-    return this.request(API_CONFIG.ENDPOINTS.GET_USER);
-  }
-
-  // Bank account validation methods
-  async validateBankAccount(routingNumber) {
-    return this.request(API_CONFIG.ENDPOINTS.VALIDATE_BANK_ACCOUNT, {
-      method: "POST",
-      body: JSON.stringify({ routingNumber }),
-    });
-  }
-
-  // Plaid methods
-  async createPlaidLinkToken(userId) {
-    return this.request(API_CONFIG.ENDPOINTS.PLAID_CREATE_LINK_TOKEN, {
-      method: "POST",
-      body: JSON.stringify({ userId }),
-    });
-  }
-
-  async exchangePlaidPublicToken(publicToken, userId, metadata) {
-    return this.request(API_CONFIG.ENDPOINTS.PLAID_EXCHANGE_PUBLIC_TOKEN, {
-      method: "POST",
-      body: JSON.stringify({ publicToken, userId, metadata }),
-    });
-  }
-
-  async getPlaidAccounts(userId) {
-    return this.request(API_CONFIG.ENDPOINTS.PLAID_GET_ACCOUNTS, {
-      method: "POST",
-      body: JSON.stringify({ userId }),
-    });
-  }
-
-  // Payment methods
-  async createIdentity(userId, personalInfo) {
-    return this.request(API_CONFIG.ENDPOINTS.CREATE_IDENTITY, {
-      method: "POST",
-      body: JSON.stringify({ userId, personalInfo }),
-    });
-  }
-
-  async createPaymentInstrument(
-    userId,
-    paymentMethod,
-    cardToken = null,
-    bankAccount = null
-  ) {
-    return this.request(API_CONFIG.ENDPOINTS.CREATE_PAYMENT_INSTRUMENT, {
-      method: "POST",
-      body: JSON.stringify({ userId, paymentMethod, cardToken, bankAccount }),
-    });
-  }
-
-  async processPayment(userId, paymentInstrumentId, amount, description) {
-    return this.request(API_CONFIG.ENDPOINTS.PROCESS_PAYMENT, {
-      method: "POST",
-      body: JSON.stringify({
-        userId,
-        paymentInstrumentId,
-        amount,
-        description,
-      }),
-    });
-  }
-
-  async getTransaction(transactionId) {
-    return this.request(
-      `${API_CONFIG.ENDPOINTS.GET_TRANSACTION}/${transactionId}`
+  const data = await safeParse(res);
+  if (!res.ok) {
+    const err = new Error(
+      data?.message || data?.error || res.statusText || "payment_failed"
     );
+    err.code = (data && (data.code || data.error)) || String(res.status);
+    err.status = res.status;
+    err.details = data || null;
+    throw err;
   }
+  return data;
+}
 
-  // Transactions (PostgreSQL) methods
-  async listTransactions(params = {}) {
-    const limit = typeof params.limit === "number" ? params.limit : 50;
-    const offset = typeof params.offset === "number" ? params.offset : 0;
-    const query = new URLSearchParams({
-      limit: String(limit),
-      offset: String(offset),
-    }).toString();
-    return this.request(`${API_CONFIG.ENDPOINTS.TRANSACTIONS}?${query}`, {
-      method: "GET",
-    });
-  }
+export async function getSession(sessionId) {
+  const res = await fetch(`${API_BASE}/v1/checkout-sessions/${sessionId}`);
+  if (!res.ok) throw new Error("Failed to load session");
+  return res.json();
+}
 
-  async storeTransaction(body) {
-    return this.request(API_CONFIG.ENDPOINTS.TRANSACTIONS, {
-      method: "POST",
-      body: JSON.stringify(body),
-    });
-  }
-
-  // Raw process payment allowing flexible body
-  async processPaymentRaw(body) {
-    return this.request(API_CONFIG.ENDPOINTS.PROCESS_PAYMENT, {
-      method: "POST",
-      body: JSON.stringify(body),
-    });
+export async function pollUntilComplete(sessionId) {
+  // Poll until session status is paid or failed
+  // 2 second interval
+  for (;;) {
+    const s = await getSession(sessionId);
+    if (s?.status === "paid" || s?.status === "failed") return s?.status;
+    await new Promise((r) => setTimeout(r, 2000));
   }
 }
 
-// Create singleton instance
-const apiClient = new ApiClient();
+async function safeParse(res) {
+  try {
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
 
-export default apiClient;
-export { API_CONFIG };
+// Optional Finix publishable key for client tokenization (if needed by UI)
+// Finix tokenization configuration is handled via applicationId + environment
+// (no client publishable key). See FinixTokenizationForm.

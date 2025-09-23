@@ -1,46 +1,49 @@
-import React, { useState } from 'react';
-import apiClient from '../config/api';
+import React, { useState } from "react";
+// Legacy ACH API removed
 
 const DirectAchPaymentForm = ({ onSuccess, onError, amount = 52.82 }) => {
   const [formData, setFormData] = useState({
-    accountName: '',
-    accountNumber: '',
-    confirmAccountNumber: '',
-    routingNumber: '',
-    accountType: 'checking',
+    accountName: "",
+    accountNumber: "",
+    confirmAccountNumber: "",
+    routingNumber: "",
+    accountType: "checking",
     consent: false,
-    savePayment: false
+    savePayment: false,
   });
-  
+
   const [validation, setValidation] = useState({
     routingNumber: null,
-    accountNumber: null
+    accountNumber: null,
   });
-  
+
   const [isValidating, setIsValidating] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
 
   const handleInputChange = (e) => {
     const { name, value, type, checked } = e.target;
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
-      [name]: type === 'checkbox' ? checked : value
+      [name]: type === "checkbox" ? checked : value,
     }));
 
     // Clear validation when user changes input
-    if (name === 'routingNumber' || name === 'accountNumber') {
-      setValidation(prev => ({
+    if (name === "routingNumber" || name === "accountNumber") {
+      setValidation((prev) => ({
         ...prev,
-        [name]: null
+        [name]: null,
       }));
     }
   };
 
   const validateRoutingNumber = async (routingNumber) => {
     if (!/^\d{9}$/.test(routingNumber)) {
-      setValidation(prev => ({
+      setValidation((prev) => ({
         ...prev,
-        routingNumber: { valid: false, error: 'Routing number must be 9 digits' }
+        routingNumber: {
+          valid: false,
+          error: "Routing number must be 9 digits",
+        },
       }));
       return;
     }
@@ -48,14 +51,17 @@ const DirectAchPaymentForm = ({ onSuccess, onError, amount = 52.82 }) => {
     setIsValidating(true);
     try {
       const result = await apiClient.validateBankAccount(routingNumber);
-      setValidation(prev => ({
+      setValidation((prev) => ({
         ...prev,
-        routingNumber: result
+        routingNumber: result,
       }));
     } catch (error) {
-      setValidation(prev => ({
+      setValidation((prev) => ({
         ...prev,
-        routingNumber: { valid: false, error: 'Unable to validate routing number' }
+        routingNumber: {
+          valid: false,
+          error: "Unable to validate routing number",
+        },
       }));
     } finally {
       setIsValidating(false);
@@ -70,35 +76,38 @@ const DirectAchPaymentForm = ({ onSuccess, onError, amount = 52.82 }) => {
 
   const validateAccountNumber = () => {
     const { accountNumber, confirmAccountNumber } = formData;
-    
+
     if (accountNumber.length < 4 || accountNumber.length > 17) {
-      setValidation(prev => ({
+      setValidation((prev) => ({
         ...prev,
-        accountNumber: { valid: false, error: 'Account number must be 4-17 digits' }
+        accountNumber: {
+          valid: false,
+          error: "Account number must be 4-17 digits",
+        },
       }));
       return false;
     }
 
     if (accountNumber !== confirmAccountNumber) {
-      setValidation(prev => ({
+      setValidation((prev) => ({
         ...prev,
-        accountNumber: { valid: false, error: 'Account numbers do not match' }
+        accountNumber: { valid: false, error: "Account numbers do not match" },
       }));
       return false;
     }
 
-    setValidation(prev => ({
+    setValidation((prev) => ({
       ...prev,
-      accountNumber: { valid: true }
+      accountNumber: { valid: true },
     }));
     return true;
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
+
     if (!formData.consent) {
-      onError('You must agree to the ACH authorization');
+      onError("You must agree to the ACH authorization");
       return;
     }
 
@@ -107,53 +116,17 @@ const DirectAchPaymentForm = ({ onSuccess, onError, amount = 52.82 }) => {
     const isRoutingValid = validation.routingNumber?.valid;
 
     if (!isAccountValid || !isRoutingValid) {
-      onError('Please correct the errors in the form');
+      onError("Please correct the errors in the form");
       return;
     }
 
     setIsProcessing(true);
-    
+
     try {
-      // Get current user
-      const user = await apiClient.getCurrentUser();
-      
-      // Create payment instrument
-      const bankAccount = {
-        account_name: formData.accountName,
-        account_number: formData.accountNumber,
-        routing_number: formData.routingNumber,
-        account_type: formData.accountType
-      };
-
-      const paymentInstrument = await apiClient.createPaymentInstrument(
-        user.user.id,
-        'ach',
-        null, // no card token
-        bankAccount
-      );
-
-      // Process payment
-      const payment = await apiClient.processPayment(
-        user.user.id,
-        paymentInstrument.payment_instrument_id,
-        amount,
-        'Bogle Payment Portal - ACH Payment'
-      );
-
-      onSuccess({
-        paymentMethod: 'ach',
-        amount: amount,
-        transactionId: payment.transaction_id,
-        bankAccount: {
-          name: formData.accountName,
-          lastFour: formData.accountNumber.slice(-4),
-          accountType: formData.accountType
-        }
-      });
-
+      throw new Error("ACH flow is disabled in this build");
     } catch (error) {
-      console.error('ACH payment error:', error);
-      onError(error.message || 'Failed to process ACH payment');
+      console.error("ACH payment error:", error);
+      onError(error.message || "Failed to process ACH payment");
     } finally {
       setIsProcessing(false);
     }
@@ -162,11 +135,13 @@ const DirectAchPaymentForm = ({ onSuccess, onError, amount = 52.82 }) => {
   return (
     <div className="max-w-md mx-auto bg-white p-6 rounded-lg shadow-lg">
       <h2 className="text-2xl font-bold mb-6 text-center">ACH Bank Payment</h2>
-      
+
       <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-lg">
         <div className="flex items-center justify-between">
           <span className="text-green-800 font-medium">Total Amount:</span>
-          <span className="text-green-800 font-bold text-xl">${amount.toFixed(2)}</span>
+          <span className="text-green-800 font-bold text-xl">
+            ${amount.toFixed(2)}
+          </span>
         </div>
         <p className="text-green-600 text-sm mt-1">Includes 2% ACH discount</p>
       </div>
@@ -201,13 +176,18 @@ const DirectAchPaymentForm = ({ onSuccess, onError, amount = 52.82 }) => {
             maxLength="9"
             pattern="\d{9}"
             className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-              validation.routingNumber?.valid === false ? 'border-red-500' : 
-              validation.routingNumber?.valid === true ? 'border-green-500' : 'border-gray-300'
+              validation.routingNumber?.valid === false
+                ? "border-red-500"
+                : validation.routingNumber?.valid === true
+                ? "border-green-500"
+                : "border-gray-300"
             }`}
             placeholder="9-digit routing number"
           />
           {isValidating && (
-            <p className="text-sm text-blue-600 mt-1">Validating routing number...</p>
+            <p className="text-sm text-blue-600 mt-1">
+              Validating routing number...
+            </p>
           )}
           {validation.routingNumber?.valid === true && (
             <p className="text-sm text-green-600 mt-1">
@@ -235,8 +215,11 @@ const DirectAchPaymentForm = ({ onSuccess, onError, amount = 52.82 }) => {
             maxLength="17"
             pattern="\d{4,17}"
             className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-              validation.accountNumber?.valid === false ? 'border-red-500' : 
-              validation.accountNumber?.valid === true ? 'border-green-500' : 'border-gray-300'
+              validation.accountNumber?.valid === false
+                ? "border-red-500"
+                : validation.accountNumber?.valid === true
+                ? "border-green-500"
+                : "border-gray-300"
             }`}
             placeholder="Account number"
           />
@@ -255,8 +238,11 @@ const DirectAchPaymentForm = ({ onSuccess, onError, amount = 52.82 }) => {
             required
             maxLength="17"
             className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-              validation.accountNumber?.valid === false ? 'border-red-500' : 
-              validation.accountNumber?.valid === true ? 'border-green-500' : 'border-gray-300'
+              validation.accountNumber?.valid === false
+                ? "border-red-500"
+                : validation.accountNumber?.valid === true
+                ? "border-green-500"
+                : "border-gray-300"
             }`}
             placeholder="Re-enter account number"
           />
@@ -306,23 +292,32 @@ const DirectAchPaymentForm = ({ onSuccess, onError, amount = 52.82 }) => {
               className="mt-1"
             />
             <label className="text-sm text-gray-700">
-              I authorize Bogle Payment Portal to electronically debit my account and, 
-              if necessary, electronically credit my account to correct erroneous debits. 
-              This authorization will remain in effect until I notify you in writing to revoke it.
+              I authorize Bogle Payment Portal to electronically debit my
+              account and, if necessary, electronically credit my account to
+              correct erroneous debits. This authorization will remain in effect
+              until I notify you in writing to revoke it.
             </label>
           </div>
         </div>
 
         <button
           type="submit"
-          disabled={isProcessing || !formData.consent || validation.routingNumber?.valid !== true}
+          disabled={
+            isProcessing ||
+            !formData.consent ||
+            validation.routingNumber?.valid !== true
+          }
           className={`w-full py-3 px-4 rounded-md font-medium transition-colors ${
-            isProcessing || !formData.consent || validation.routingNumber?.valid !== true
-              ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-              : 'bg-blue-600 text-white hover:bg-blue-700'
+            isProcessing ||
+            !formData.consent ||
+            validation.routingNumber?.valid !== true
+              ? "bg-gray-300 text-gray-500 cursor-not-allowed"
+              : "bg-blue-600 text-white hover:bg-blue-700"
           }`}
         >
-          {isProcessing ? 'Processing Payment...' : `Pay $${amount.toFixed(2)} via ACH`}
+          {isProcessing
+            ? "Processing Payment..."
+            : `Pay $${amount.toFixed(2)} via ACH`}
         </button>
       </form>
 

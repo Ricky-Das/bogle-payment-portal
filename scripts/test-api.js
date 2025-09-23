@@ -1,16 +1,12 @@
 /*
-  Simple test script to hit GET /transactions on the Payments API.
+  Minimal flow test script for new API.
   Usage:
-    PAYMENTS_API=https://... PAYMENTS_API_KEY=xxxx npm run test:api
-  or
-    VITE_API_URL=https://... VITE_API_KEY=xxxx npm run test:api
+    API_BASE=https://tstd5z72k1.execute-api.us-east-1.amazonaws.com node scripts/test-api.js
 */
 
-const BASE =
-  process.env.PAYMENTS_API ||
-  process.env.VITE_API_URL ||
-  "https://o7h8qusgd9.execute-api.us-east-1.amazonaws.com/prod";
-const API_KEY = process.env.PAYMENTS_API_KEY || process.env.VITE_API_KEY || "";
+const API_BASE =
+  process.env.API_BASE ||
+  "https://tstd5z72k1.execute-api.us-east-1.amazonaws.com";
 
 async function main() {
   if (typeof fetch !== "function") {
@@ -18,23 +14,51 @@ async function main() {
     process.exit(1);
   }
 
-  const url = `${BASE.replace(/\/$/, "")}/transactions?limit=1&offset=0`;
-  const headers = { "Content-Type": "application/json" };
-  if (API_KEY) headers["x-api-key"] = API_KEY;
-
-  console.log("GET", url);
   try {
-    const res = await fetch(url, { method: "GET", headers });
-    const text = await res.text();
-    console.log("Status:", res.status, res.statusText);
-    console.log("Body:");
-    console.log(text);
-    if (!res.ok) process.exit(2);
+    // 1) Create checkout session
+    const createRes = await fetch(`${API_BASE}/v1/checkout-sessions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        line_items: [
+          { name: "Test Item", quantity: 1, unit_amount: 123, currency: "USD" },
+        ],
+        success_url: "https://example.com/success",
+        cancel_url: "https://example.com/cancel",
+        customer: { email: "user@example.com", name: "User Name" },
+      }),
+    });
+    const created = await createRes.json();
+    if (!createRes.ok)
+      throw new Error(created?.error || "Failed to create session");
+
+    // 2) Confirm payment (requires real Finix token to succeed)
+    const idempotencyKey =
+      globalThis.crypto && crypto.randomUUID
+        ? crypto.randomUUID()
+        : `uuid_${Date.now()}`;
+    const payRes = await fetch(`${API_BASE}/v1/payments`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Idempotency-Key": idempotencyKey,
+      },
+      body: JSON.stringify({
+        session_id: created.id,
+        payment_method: {
+          type: "card",
+          card_token: "pi_dummy",
+          billing_postal_code: "94107",
+        },
+      }),
+    });
+    const pay = await payRes.text();
+    console.log("Payments response status:", payRes.status, payRes.statusText);
+    console.log("Payments response body:", pay);
   } catch (err) {
-    console.error("Request failed:", err);
-    process.exit(3);
+    console.error("Minimal flow failed:", err.message || err);
+    process.exit(2);
   }
 }
 
 main();
-

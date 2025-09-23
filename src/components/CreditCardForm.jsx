@@ -1,5 +1,10 @@
-import React, { useState, useEffect } from "react";
-import apiClient from "../config/api";
+import React, { useState, useEffect, useRef } from "react";
+import {
+  createCheckoutSession,
+  confirmPayment,
+  pollUntilComplete,
+} from "../config/api";
+import FinixTokenizationForm from "./FinixTokenizationForm";
 
 const CreditCardForm = ({ onSuccess, onError, amount = 52.82 }) => {
   const [formData, setFormData] = useState({
@@ -26,13 +31,15 @@ const CreditCardForm = ({ onSuccess, onError, amount = 52.82 }) => {
 
   const [isProcessing, setIsProcessing] = useState(false);
   const [finixConfig, setFinixConfig] = useState(null);
+  const tokenizationRef = useRef(null);
+  const [finixReady, setFinixReady] = useState(false);
 
   useEffect(() => {
     // Initialize Finix.js (this would be loaded from Finix CDN in production)
     // For now, we'll simulate the tokenization process
     setFinixConfig({
       environment: "sandbox", // This should come from your backend
-      applicationId: "your-finix-application-id", // This should come from your backend
+      applicationId: "APchtKYW94eNhmDAQtRqpNZy", // This should come from your backend
     });
   }, []);
 
@@ -91,235 +98,131 @@ const CreditCardForm = ({ onSuccess, onError, amount = 52.82 }) => {
     }
   };
 
-  const validateCardNumber = (cardNumber) => {
-    const cleanNumber = cardNumber.replace(/\s/g, "");
-
-    // Basic Luhn algorithm check
-    if (cleanNumber.length < 13 || cleanNumber.length > 19) {
-      return { valid: false, error: "Invalid card number length" };
-    }
-
-    let sum = 0;
-    let isEven = false;
-
-    for (let i = cleanNumber.length - 1; i >= 0; i--) {
-      let digit = parseInt(cleanNumber[i]);
-
-      if (isEven) {
-        digit *= 2;
-        if (digit > 9) digit -= 9;
-      }
-
-      sum += digit;
-      isEven = !isEven;
-    }
-
-    const isValid = sum % 10 === 0;
-
-    // Detect card type
-    let cardType = "Unknown";
-    if (cleanNumber.startsWith("4")) cardType = "Visa";
-    else if (cleanNumber.startsWith("5") || cleanNumber.startsWith("2"))
-      cardType = "Mastercard";
-    else if (cleanNumber.startsWith("3")) cardType = "American Express";
-
-    return {
-      valid: isValid,
-      cardType: isValid ? cardType : null,
-      error: isValid ? null : "Invalid card number",
-    };
-  };
-
-  const validateExpiry = (month, year) => {
-    const currentDate = new Date();
-    const currentYear = currentDate.getFullYear();
-    const currentMonth = currentDate.getMonth() + 1;
-
-    const expMonth = parseInt(month);
-    const expYear = parseInt(year);
-
-    if (expMonth < 1 || expMonth > 12) {
-      return { valid: false, error: "Invalid month" };
-    }
-
-    if (
-      expYear < currentYear ||
-      (expYear === currentYear && expMonth < currentMonth)
-    ) {
-      return { valid: false, error: "Card has expired" };
-    }
-
-    return { valid: true };
-  };
-
-  const handleCardNumberBlur = () => {
-    const validation = validateCardNumber(formData.cardNumber);
-    setValidation((prev) => ({ ...prev, cardNumber: validation }));
-  };
-
-  const handleExpiryBlur = () => {
-    if (formData.expiryMonth && formData.expiryYear) {
-      const validation = validateExpiry(
-        formData.expiryMonth,
-        formData.expiryYear
-      );
-      setValidation((prev) => ({ ...prev, expiry: validation }));
-    }
-  };
-
-  const handleCvvBlur = () => {
-    const isValid = formData.cvv.length >= 3 && formData.cvv.length <= 4;
-    setValidation((prev) => ({
-      ...prev,
-      cvv: {
-        valid: isValid,
-        error: isValid ? null : "Invalid CVV",
-      },
-    }));
-  };
+  // Hosted Fields handle all card field validation
 
   const tokenizeCard = async () => {
-    // In a real implementation, this would use Finix.js to tokenize the card
-    // For demo purposes, we'll simulate this process
-
-    const cardData = {
-      number: formData.cardNumber.replace(/\s/g, ""),
-      expiry_month: formData.expiryMonth,
-      expiry_year: formData.expiryYear,
-      security_code: formData.cvv,
-      name: formData.cardholderName,
-      address: {
-        line1: formData.billingAddress.line1,
-        line2: formData.billingAddress.line2,
-        city: formData.billingAddress.city,
-        region: formData.billingAddress.state,
-        postal_code: formData.billingAddress.zipCode,
-        country: "USA",
-      },
-    };
-
-    // Simulate Finix tokenization
-    // In production, this would be done client-side with Finix.js
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        resolve({
-          id: `PItoken_${Math.random().toString(36).substr(2, 9)}`,
-          type: "PAYMENT_CARD",
-          fingerprint: `FP${Math.random().toString(36).substr(2, 8)}`,
-          brand: validation.cardNumber?.cardType || "UNKNOWN",
-          last_four: cardData.number.slice(-4),
-        });
-      }, 1000);
-    });
+    if (
+      tokenizationRef.current &&
+      typeof tokenizationRef.current.tokenize === "function"
+    ) {
+      return tokenizationRef.current.tokenize();
+    }
+    throw new Error("Tokenization form not ready");
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    // Validate all fields
-    const cardValidation = validateCardNumber(formData.cardNumber);
-    const expiryValidation = validateExpiry(
-      formData.expiryMonth,
-      formData.expiryYear
-    );
-    const cvvValidation = {
-      valid: formData.cvv.length >= 3 && formData.cvv.length <= 4,
-      error:
-        formData.cvv.length >= 3 && formData.cvv.length <= 4
-          ? null
-          : "Invalid CVV",
-    };
-
-    setValidation({
-      cardNumber: cardValidation,
-      expiry: expiryValidation,
-      cvv: cvvValidation,
-    });
-
-    if (
-      !cardValidation.valid ||
-      !expiryValidation.valid ||
-      !cvvValidation.valid
-    ) {
-      onError("Please correct the errors in the form");
-      return;
-    }
-
-    if (!formData.cardholderName.trim()) {
-      onError("Cardholder name is required");
-      return;
-    }
+    // Minimal client validation (card fields validated by Finix Hosted Fields)
+    // Cardholder name is collected inside Finix form; no client validation here
 
     setIsProcessing(true);
 
     try {
-      // Tokenize card (simulated)
+      // Ensure tokenization is configured
+      if (
+        !import.meta.env.VITE_FINIX_SDK_URL ||
+        !import.meta.env.VITE_FINIX_APPLICATION_ID
+      ) {
+        throw new Error(
+          "Payment temporarily unavailable: Finix is not configured"
+        );
+      }
+      // 1) Create checkout session
+      const sessionId = await createCheckoutSession({
+        line_items: [
+          {
+            name: "Checkout Item",
+            quantity: 1,
+            unit_amount: Math.round(amount * 100),
+            currency: "USD",
+          },
+        ],
+        success_url: window.location.origin + "/confirmation",
+        cancel_url: window.location.href,
+        customer: {
+          email: "user@example.com",
+          name: undefined,
+        },
+      });
+
+      // 2) Tokenize card with Finix on client
       const cardToken = await tokenizeCard();
 
-      // Build request for backend processing via API Gateway
-      const amountCents = Math.round(amount * 100);
-      const merchantId = import.meta.env.VITE_MERCHANT_ID || "default";
-      const idempotencyKey = `txn_${Date.now()}_${Math.random()
-        .toString(36)
-        .substr(2, 6)}`;
+      // 3) Optional fraud session id via Finix fraud SDK
+      const fraudSessionId =
+        (tokenizationRef.current &&
+          typeof tokenizationRef.current.getFraudSessionId === "function" &&
+          tokenizationRef.current.getFraudSessionId()) ||
+        undefined;
 
-      const body = {
-        merchant_id: merchantId,
-        idempotency_key: idempotencyKey,
-        amount_cents: amountCents,
-        currency: "USD",
-        payment_method: "card",
-        card_token: cardToken.id,
-        card_brand: cardToken.brand,
-        card_last_four: cardToken.last_four,
-        description: "Portal purchase",
-        metadata: { ui_source: "payment-portal" },
-      };
+      // 4) Confirm payment
+      const payment = await confirmPayment(
+        sessionId,
+        cardToken.id,
+        formData.billingAddress.zipCode,
+        fraudSessionId
+      );
 
-      try {
-        const result = await apiClient.processPaymentRaw(body);
+      // 5) Poll status until complete
+      const finalStatus = await pollUntilComplete(sessionId);
 
+      if (finalStatus === "paid") {
         onSuccess({
           paymentMethod: "card",
           amount: amount,
-          transactionId: result?.transaction_id || result?.id || idempotencyKey,
-          status: result?.status || "pending",
+          transactionId: payment?.transaction_id || payment?.id || sessionId,
+          status: finalStatus,
           card: {
             brand: cardToken.brand,
             lastFour: cardToken.last_four,
           },
-          gatewayResponse: result,
+          gatewayResponse: payment,
         });
-      } catch (apiError) {
-        // For demo purposes, if it's a 500 error (expected with mock data),
-        // show a success message since CORS and API integration is working
-        if (
-          apiError.message?.includes("Failed to process payment") ||
-          apiError.message?.includes("500")
-        ) {
-          console.log(
-            "Demo mode: Treating 500 error as success since API integration works"
-          );
-
-          onSuccess({
-            paymentMethod: "card",
-            amount: amount,
-            transactionId: idempotencyKey,
-            status: "demo_success",
-            card: {
-              brand: cardToken.brand,
-              lastFour: cardToken.last_four,
-            },
-            note: "Demo payment - API integration successful",
-          });
-        } else {
-          // Re-throw other errors
-          throw apiError;
-        }
+      } else {
+        throw new Error("payment_failed");
       }
     } catch (error) {
+      let friendly = "Payment failed. Please try again.";
+      const code = error && (error.code || error.status || "");
+      switch (String(code).toLowerCase()) {
+        case "processor_error":
+        case "502":
+          friendly =
+            "The processor returned an error. Please use a different card or try again later.";
+          break;
+        case "card_declined":
+          friendly =
+            "Your card was declined. Try another card or contact your bank.";
+          break;
+        case "invalid_request":
+        case "400":
+          friendly =
+            "Invalid payment request. Please recheck the details and try again.";
+          break;
+        case "unauthorized":
+        case "401":
+          friendly = "Authorization failed. Please refresh and try again.";
+          break;
+        case "forbidden":
+        case "403":
+          friendly =
+            "This action is not allowed. Contact support if this persists.";
+          break;
+        case "not_found":
+        case "404":
+          friendly =
+            "Payment session not found. Please refresh and start again.";
+          break;
+        case "timeout":
+        case "504":
+          friendly = "The payment timed out. Please try again.";
+          break;
+        default:
+          if (error?.details?.message) friendly = error.details.message;
+      }
       console.error("Credit card payment error:", error);
-      onError(error.message || "Failed to process credit card payment");
+      onError(friendly);
     } finally {
       setIsProcessing(false);
     }
@@ -341,124 +244,15 @@ const CreditCardForm = ({ onSuccess, onError, amount = 52.82 }) => {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Card Number
-          </label>
-          <input
-            type="text"
-            name="cardNumber"
-            value={formData.cardNumber}
-            onChange={handleInputChange}
-            onBlur={handleCardNumberBlur}
-            required
-            className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-              validation.cardNumber?.valid === false
-                ? "border-red-500"
-                : validation.cardNumber?.valid === true
-                ? "border-green-500"
-                : "border-gray-300"
-            }`}
-            placeholder="1234 5678 9012 3456"
-          />
-          {validation.cardNumber?.valid === true && (
-            <p className="text-sm text-green-600 mt-1">
-              ✓ {validation.cardNumber.cardType}
-            </p>
-          )}
-          {validation.cardNumber?.valid === false && (
-            <p className="text-sm text-red-600 mt-1">
-              {validation.cardNumber.error}
-            </p>
-          )}
-        </div>
+        {/* Finix Hosted Fields */}
+        <FinixTokenizationForm
+          ref={tokenizationRef}
+          className="mb-2"
+          onReady={() => setFinixReady(true)}
+        />
+        {/* Raw card fields removed in favor of hosted fields above */}
 
-        <div className="grid grid-cols-3 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Month
-            </label>
-            <input
-              type="text"
-              name="expiryMonth"
-              value={formData.expiryMonth}
-              onChange={handleInputChange}
-              onBlur={handleExpiryBlur}
-              required
-              maxLength="2"
-              className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                validation.expiry?.valid === false
-                  ? "border-red-500"
-                  : validation.expiry?.valid === true
-                  ? "border-green-500"
-                  : "border-gray-300"
-              }`}
-              placeholder="MM"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Year
-            </label>
-            <input
-              type="text"
-              name="expiryYear"
-              value={formData.expiryYear}
-              onChange={handleInputChange}
-              onBlur={handleExpiryBlur}
-              required
-              maxLength="4"
-              className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                validation.expiry?.valid === false
-                  ? "border-red-500"
-                  : validation.expiry?.valid === true
-                  ? "border-green-500"
-                  : "border-gray-300"
-              }`}
-              placeholder="YYYY"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              CVV
-            </label>
-            <input
-              type="text"
-              name="cvv"
-              value={formData.cvv}
-              onChange={handleInputChange}
-              onBlur={handleCvvBlur}
-              required
-              className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                validation.cvv?.valid === false
-                  ? "border-red-500"
-                  : validation.cvv?.valid === true
-                  ? "border-green-500"
-                  : "border-gray-300"
-              }`}
-              placeholder="123"
-            />
-          </div>
-        </div>
-
-        {validation.expiry?.valid === false && (
-          <p className="text-sm text-red-600">{validation.expiry.error}</p>
-        )}
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Cardholder Name
-          </label>
-          <input
-            type="text"
-            name="cardholderName"
-            value={formData.cardholderName}
-            onChange={handleInputChange}
-            required
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            placeholder="Full name on card"
-          />
-        </div>
+        {/* Cardholder Name collected within Finix form */}
 
         <div className="border-t pt-4">
           <h3 className="text-lg font-medium mb-3">Billing Address</h3>
@@ -533,14 +327,18 @@ const CreditCardForm = ({ onSuccess, onError, amount = 52.82 }) => {
 
         <button
           type="submit"
-          disabled={isProcessing}
+          disabled={isProcessing || !finixReady}
           className={`w-full py-3 px-4 rounded-md font-medium transition-colors ${
-            isProcessing
+            isProcessing || !finixReady
               ? "bg-gray-300 text-gray-500 cursor-not-allowed"
               : "bg-blue-600 text-white hover:bg-blue-700"
           }`}
         >
-          {isProcessing ? "Processing Payment..." : `Pay $${amount.toFixed(2)}`}
+          {isProcessing
+            ? "Processing Payment..."
+            : !finixReady
+            ? "Loading Payment Form..."
+            : `Pay $${amount.toFixed(2)}`}
         </button>
       </form>
 

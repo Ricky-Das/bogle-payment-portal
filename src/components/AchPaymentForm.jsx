@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { usePlaidLink } from "react-plaid-link";
 import { useLocation } from "react-router-dom";
-import apiClient from '../config/api';
+// Legacy ACH API removed
 
 function AchPaymentForm({ onSuccess, onError, amount = 52.82 }) {
   const location = useLocation();
@@ -27,9 +27,9 @@ function AchPaymentForm({ onSuccess, onError, amount = 52.82 }) {
   const initializeComponent = async () => {
     try {
       // Check if user is authenticated first
-      const token = localStorage.getItem('accessToken');
+      const token = localStorage.getItem("accessToken");
       if (!token) {
-        console.log('No auth token found, user needs to sign in first');
+        console.log("No auth token found, user needs to sign in first");
         // Don't show error, just wait for authentication
         return;
       }
@@ -39,7 +39,9 @@ function AchPaymentForm({ onSuccess, onError, amount = 52.82 }) {
       setUser(currentUser.user);
 
       // Create Plaid link token
-      const tokenResponse = await apiClient.createPlaidLinkToken(currentUser.user.id);
+      const tokenResponse = await apiClient.createPlaidLinkToken(
+        currentUser.user.id
+      );
       setLinkToken(tokenResponse.link_token);
 
       // Check if user already has linked accounts
@@ -51,13 +53,13 @@ function AchPaymentForm({ onSuccess, onError, amount = 52.82 }) {
         }
       } catch (error) {
         // No accounts linked yet, that's fine
-        console.log('No linked accounts found:', error.message);
+        console.log("No linked accounts found:", error.message);
       }
     } catch (error) {
-      console.error('Failed to initialize Plaid:', error);
+      console.error("Failed to initialize Plaid:", error);
       // Only show error if it's not an authentication issue
-      if (error.message !== 'Authentication failed') {
-        onError && onError('Failed to initialize payment system');
+      if (error.message !== "Authentication failed") {
+        onError && onError("Failed to initialize payment system");
       }
     }
   };
@@ -76,8 +78,8 @@ function AchPaymentForm({ onSuccess, onError, amount = 52.82 }) {
       setLinkedAccounts(response);
       setBankLinked(true);
     } catch (error) {
-      console.error('Failed to exchange Plaid token:', error);
-      onError && onError('Failed to link bank account');
+      console.error("Failed to exchange Plaid token:", error);
+      onError && onError("Failed to link bank account");
     }
   };
 
@@ -86,11 +88,11 @@ function AchPaymentForm({ onSuccess, onError, amount = 52.82 }) {
     onSuccess: handlePlaidSuccess,
     onExit: (err, metadata) => {
       if (err) {
-        console.error('Plaid Link exited with error:', err);
+        console.error("Plaid Link exited with error:", err);
       }
     },
     onEvent: (eventName, metadata) => {
-      console.log('Plaid Link event:', eventName, metadata);
+      console.log("Plaid Link event:", eventName, metadata);
     },
   };
   const { open, ready } = usePlaidLink(config);
@@ -139,40 +141,17 @@ function AchPaymentForm({ onSuccess, onError, amount = 52.82 }) {
         const bankAccount = {
           account_name: selectedAccount.name,
           account_number: selectedAccount.account_id, // Plaid account ID
-          routing_number: selectedAccount.routing_number || '021000021', // Would come from Plaid
-          account_type: selectedAccount.subtype === 'savings' ? 'savings' : 'checking',
-          plaid_account_id: selectedAccount.account_id // Store Plaid reference
+          routing_number: selectedAccount.routing_number || "021000021", // Would come from Plaid
+          account_type:
+            selectedAccount.subtype === "savings" ? "savings" : "checking",
+          plaid_account_id: selectedAccount.account_id, // Store Plaid reference
         };
 
-        const paymentInstrument = await apiClient.createPaymentInstrument(
-          user.id,
-          'ach',
-          null, // no card token for ACH
-          bankAccount
-        );
-
-        // Process ACH payment through Finix
-        const payment = await apiClient.processPayment(
-          user.id,
-          paymentInstrument.payment_instrument_id,
-          amount,
-          'Bogle Payment Portal - ACH Payment via Plaid'
-        );
-
-        onSuccess && onSuccess({
-          paymentMethod: 'ach',
-          amount: amount,
-          transactionId: payment.transaction_id,
-          bankAccount: {
-            name: selectedAccount.name,
-            mask: selectedAccount.mask,
-            accountType: selectedAccount.subtype
-          }
-        });
+        throw new Error("ACH flow is disabled in this build");
       }
     } catch (error) {
-      console.error('ACH payment error:', error);
-      onError && onError(error.message || 'Failed to process ACH payment');
+      console.error("ACH payment error:", error);
+      onError && onError(error.message || "Failed to process ACH payment");
     } finally {
       setProcessing(false);
     }
@@ -220,16 +199,19 @@ function AchPaymentForm({ onSuccess, onError, amount = 52.82 }) {
             type="button"
             disabled={!ready || !linkToken}
             onClick={open}
-            className={`w-full flex items-center justify-center gap-3 py-4 px-6 font-black text-white transition-all duration-200 border-2 shadow-lg ${bankLinked
-              ? "bg-green-800 border-green-900 hover:bg-green-900 shadow-green-900/25"
-              : ready && linkToken
+            className={`w-full flex items-center justify-center gap-3 py-4 px-6 font-black text-white transition-all duration-200 border-2 shadow-lg ${
+              bankLinked
+                ? "bg-green-800 border-green-900 hover:bg-green-900 shadow-green-900/25"
+                : ready && linkToken
                 ? "bg-slate-800 border-slate-900 hover:bg-slate-900 shadow-slate-900/25"
                 : "bg-gray-400 border-gray-500 cursor-not-allowed"
-              }`}
+            }`}
           >
             {bankLinked ? (
               <>
-                <span className="uppercase tracking-wider">BANK ACCOUNT LINKED</span>
+                <span className="uppercase tracking-wider">
+                  BANK ACCOUNT LINKED
+                </span>
                 <div className="w-6 h-6 bg-white text-green-800 flex items-center justify-center font-black">
                   ✓
                 </div>
@@ -241,7 +223,9 @@ function AchPaymentForm({ onSuccess, onError, amount = 52.82 }) {
               </>
             ) : (
               <>
-                <span className="uppercase tracking-wider">CONNECT BANK ACCOUNT</span>
+                <span className="uppercase tracking-wider">
+                  CONNECT BANK ACCOUNT
+                </span>
                 <div className="w-6 h-6 bg-white text-slate-800 flex items-center justify-center font-black">
                   →
                 </div>
@@ -266,11 +250,15 @@ function AchPaymentForm({ onSuccess, onError, amount = 52.82 }) {
               onChange={handleChange}
               className="mt-1 w-6 h-6 text-red-600 border-2 border-red-400 focus:ring-red-500"
             />
-            <label htmlFor="consent" className="text-sm text-slate-800 font-bold leading-tight">
-              I authorize Bogle to debit my bank account for the amount shown above.
-              I understand this is an electronic ACH debit governed by the rules of NACHA,
-              and that I may revoke this authorization by contacting Bogle at least 3 business days
-              before the scheduled debit.
+            <label
+              htmlFor="consent"
+              className="text-sm text-slate-800 font-bold leading-tight"
+            >
+              I authorize Bogle to debit my bank account for the amount shown
+              above. I understand this is an electronic ACH debit governed by
+              the rules of NACHA, and that I may revoke this authorization by
+              contacting Bogle at least 3 business days before the scheduled
+              debit.
             </label>
           </div>
         </div>
@@ -285,7 +273,6 @@ function AchPaymentForm({ onSuccess, onError, amount = 52.82 }) {
             ? "PROCESSING PAYMENT..."
             : `COMPLETE ACH PAYMENT • $${amount.toFixed(2)}`}
         </button>
-
       </form>
 
       {/* Legal disclaimers */}
@@ -317,7 +304,9 @@ function AchPaymentForm({ onSuccess, onError, amount = 52.82 }) {
         <div className="mt-4 pt-4 border-t border-slate-300 text-center">
           <div className="text-xs text-slate-600 font-bold">
             POWERED BY{" "}
-            <span className="text-slate-900 font-black tracking-wider">BOGLE</span>
+            <span className="text-slate-900 font-black tracking-wider">
+              BOGLE
+            </span>
           </div>
         </div>
       </div>
