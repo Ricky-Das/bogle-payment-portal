@@ -33,6 +33,7 @@ const CreditCardForm = ({ onSuccess, onError, amount = 52.82 }) => {
   const [finixConfig, setFinixConfig] = useState(null);
   const tokenizationRef = useRef(null);
   const [finixReady, setFinixReady] = useState(false);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     // Initialize Finix configuration from environment variables
@@ -112,8 +113,23 @@ const CreditCardForm = ({ onSuccess, onError, amount = 52.82 }) => {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    // Minimal client validation (card fields validated by Finix Hosted Fields)
-    // Cardholder name is collected inside Finix form; no client validation here
+    // Client validation for billing address (card fields validated by Finix Hosted Fields)
+    if (
+      !formData.billingAddress.zipCode ||
+      formData.billingAddress.zipCode.trim().length < 5
+    ) {
+      setError("Please enter a valid ZIP code for address verification");
+      setIsProcessing(false);
+      return;
+    }
+
+    // Validate ZIP format
+    const zipPattern = /^\d{5}(-\d{4})?$/;
+    if (!zipPattern.test(formData.billingAddress.zipCode.trim())) {
+      setError("Please enter a valid ZIP code (12345 or 12345-6789)");
+      setIsProcessing(false);
+      return;
+    }
 
     setIsProcessing(true);
 
@@ -137,8 +153,8 @@ const CreditCardForm = ({ onSuccess, onError, amount = 52.82 }) => {
             currency: "USD",
           },
         ],
-        success_url: window.location.origin + "/confirmation",
-        cancel_url: window.location.href,
+        success_url: `${window.location.origin}/confirmation`,
+        cancel_url: `${window.location.origin}/payment-method`,
         customer: {
           email: "user@example.com",
           name: undefined,
@@ -148,18 +164,28 @@ const CreditCardForm = ({ onSuccess, onError, amount = 52.82 }) => {
       // 2) Tokenize card with Finix on client
       const cardToken = await tokenizeCard();
 
-      // 3) Optional fraud session id via Finix fraud SDK
+      if (!cardToken || !cardToken.id) {
+        throw new Error("Failed to tokenize card - please try again");
+      }
+
+      // 3) Collect fraud session ID via Finix Fraud SDK for risk assessment
       const fraudSessionId =
         (tokenizationRef.current &&
           typeof tokenizationRef.current.getFraudSessionId === "function" &&
           tokenizationRef.current.getFraudSessionId()) ||
         undefined;
 
-      // 4) Confirm payment
+      if (!fraudSessionId) {
+        console.warn(
+          "Fraud session ID not available - proceeding without fraud data"
+        );
+      }
+
+      // 4) Confirm payment with AVS ZIP validation
       const payment = await confirmPayment(
         sessionId,
         cardToken.id,
-        formData.billingAddress.zipCode,
+        formData.billingAddress.zipCode.trim(), // Clean ZIP for AVS
         fraudSessionId
       );
 
@@ -221,6 +247,7 @@ const CreditCardForm = ({ onSuccess, onError, amount = 52.82 }) => {
           if (error?.details?.message) friendly = error.details.message;
       }
       console.error("Credit card payment error:", error);
+      setError(friendly);
       onError(friendly);
     } finally {
       setIsProcessing(false);
@@ -241,6 +268,13 @@ const CreditCardForm = ({ onSuccess, onError, amount = 52.82 }) => {
           </span>
         </div>
       </div>
+
+      {/* Error Display */}
+      {error && (
+        <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+          <p className="text-red-800 text-sm">{error}</p>
+        </div>
+      )}
 
       <form onSubmit={handleSubmit} className="space-y-4">
         {/* Finix Hosted Fields */}
@@ -305,8 +339,11 @@ const CreditCardForm = ({ onSuccess, onError, amount = 52.82 }) => {
               value={formData.billingAddress.zipCode}
               onChange={handleInputChange}
               required
+              pattern="[0-9]{5}(-[0-9]{4})?"
+              maxLength="10"
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="ZIP Code"
+              placeholder="ZIP Code (12345 or 12345-6789)"
+              title="Enter a valid ZIP code for address verification"
             />
           </div>
         </div>

@@ -10,13 +10,18 @@ import SmsVerificationPage from "./pages/SmsVerificationPage";
 import BankLinkPage from "./pages/BankLinkPage";
 import PaymentMethodPage from "./pages/PaymentMethodPage";
 import ConfirmationPage from "./pages/ConfirmationPage";
+import SmokeTestPage from "./pages/SmokeTestPage";
 import Logo from "./components/Logo";
+import DiagnosticsBanner from "./components/DiagnosticsBanner";
 import { Link } from "react-router-dom";
 import TransactionsPage from "./pages/TransactionsPage";
 
 function App() {
   return (
     <div className="min-h-screen bg-gray-100">
+      {/* Development Diagnostics */}
+      <DiagnosticsBanner />
+
       {/* Navigation */}
       <nav className="px-6 py-4 border-b border-white/20 backdrop-blur-sm bg-white/70">
         <div className="max-w-6xl mx-auto flex items-center justify-between">
@@ -33,6 +38,14 @@ function App() {
             >
               Pay
             </Link>
+            {import.meta.env.MODE === "development" && (
+              <Link
+                to="/smoke-test"
+                className="text-gray-500 hover:text-blue-600 text-xs"
+              >
+                Test
+              </Link>
+            )}
             {/* Transactions link removed with legacy API */}
           </div>
         </div>
@@ -52,6 +65,7 @@ function App() {
           <Route path="/bank-link" element={<BankLinkPage />} /> */}
           <Route path="/payment-method" element={<PaymentMethodPage />} />
           <Route path="/confirmation" element={<ConfirmationPage />} />
+          <Route path="/smoke-test" element={<SmokeTestPage />} />
           {/* Legacy Transactions route removed */}
         </Routes>
       </div>

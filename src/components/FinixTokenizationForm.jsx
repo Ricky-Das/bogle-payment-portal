@@ -94,16 +94,27 @@ const FinixTokenizationForm = forwardRef(function FinixTokenizationForm(
           window.finixCardForm = instance;
 
           finixInstanceRef.current = {
+            instance,
             async tokenize() {
               const env = FINIX_ENVIRONMENT;
               const appId = FINIX_APPLICATION_ID;
               if (typeof instance.submit !== "function") {
-                throw new Error("Tokenization not available");
+                throw new Error("Finix CardTokenForm not available");
               }
-              // Per docs: submit(environment, applicationId, callback)
+              // Per Finix docs: submit(environment, applicationId, callback)
               const res = await new Promise((resolve, reject) => {
                 instance.submit(env, appId, (err, data) => {
-                  if (err) return reject(err);
+                  if (err) {
+                    console.error("Finix tokenization error:", err);
+                    return reject(
+                      new Error(`Tokenization failed: ${err.message || err}`)
+                    );
+                  }
+                  if (!data || !data.data || !data.data.id) {
+                    return reject(
+                      new Error("Invalid token response from Finix")
+                    );
+                  }
                   resolve(data);
                 });
               });
@@ -138,6 +149,7 @@ const FinixTokenizationForm = forwardRef(function FinixTokenizationForm(
         typeof finixInstanceRef.current.tokenize === "function"
       ) {
         const inst = finixInstanceRef.current;
+        const cardForm = inst.instance; // underlying Finix CardTokenForm instance
         const primaryOpts = {
           applicationId: FINIX_APPLICATION_ID,
           environment: FINIX_ENVIRONMENT,
@@ -153,19 +165,34 @@ const FinixTokenizationForm = forwardRef(function FinixTokenizationForm(
 
         // Try createToken/tokenize/submit with multiple signatures
         const attempts = [
-          () => inst.createToken && inst.createToken(primaryOpts),
           () =>
-            inst.createToken &&
-            inst.createToken(FINIX_APPLICATION_ID, FINIX_ENVIRONMENT),
-          () => inst.tokenize && inst.tokenize(primaryOpts),
+            cardForm &&
+            typeof cardForm.submit === "function" &&
+            new Promise((resolve, reject) => {
+              cardForm.submit(
+                FINIX_ENVIRONMENT,
+                FINIX_APPLICATION_ID,
+                (err, data) => {
+                  if (err) return reject(err);
+                  resolve(data);
+                }
+              );
+            }),
+          // Some SDK builds may support createToken(options)
           () =>
-            inst.tokenize &&
-            inst.tokenize(FINIX_APPLICATION_ID, FINIX_ENVIRONMENT),
-          () => inst.submit && inst.submit(primaryOpts),
+            cardForm &&
+            typeof cardForm.createToken === "function" &&
+            cardForm.createToken(primaryOpts),
+          // Alternate parameter orders seen in older samples
           () =>
-            inst.submit && inst.submit(FINIX_APPLICATION_ID, FINIX_ENVIRONMENT),
-          () => inst.submit && inst.submit(altOpts1),
-          () => inst.submit && inst.submit(altOpts2),
+            cardForm &&
+            typeof cardForm.submit === "function" &&
+            new Promise((resolve, reject) => {
+              cardForm.submit(primaryOpts, (err, data) => {
+                if (err) return reject(err);
+                resolve(data);
+              });
+            }),
         ];
 
         for (const fn of attempts) {
@@ -173,28 +200,75 @@ const FinixTokenizationForm = forwardRef(function FinixTokenizationForm(
             const res = await (fn && fn());
             if (res) return normalizeToken(res);
           } catch (e) {
+            console.warn("Tokenization attempt failed:", e.message);
             // Try next signature
           }
         }
-        throw new Error("Tokenization not available");
+
+        // No working method found
+        console.error(
+          "All tokenization methods failed with available Finix CardTokenForm instance"
+        );
+        throw new Error(
+          "Finix tokenization failed - check console for details"
+        );
       }
-      // Fallback stub for development if SDK not available
+      // Check if we're in development and should allow fallback
+      if (import.meta.env.MODE === "production") {
+        throw new Error(
+          "Finix tokenization is required in production but SDK not available"
+        );
+      }
+
+      // Development fallback - only if no real tokenization is available
+      console.warn(
+        "Finix SDK not available - using development stub tokenization"
+      );
+      console.warn("This will NOT work with real payment processing!");
+
       return new Promise((resolve) => {
         setTimeout(() => {
           resolve({
-            id: `pi_${Math.random().toString(36).slice(2, 12)}`,
-            brand: "UNKNOWN",
-            last_four: "0000",
+            id: `TK_${Math.random().toString(36).slice(2, 12)}`,
+            brand: "VISA",
+            last_four: "4242",
           });
         }, 400);
       });
     },
     getFraudSessionId() {
-      // Example: if fraud SDK exposes a session id
-      const fraud = window.finixFraud || window.FinixFraud || null;
-      const id =
-        (fraud && (fraud.sessionId?.() || fraud.getSessionId?.())) || undefined;
-      return id;
+      // Check multiple possible fraud SDK namespaces
+      const fraudSDK =
+        window.finixFraud || window.FinixFraud || window.Finix?.Fraud || null;
+
+      if (!fraudSDK) {
+        console.warn(
+          "Finix Fraud SDK not loaded - fraud session ID unavailable"
+        );
+        return undefined;
+      }
+
+      // Try different methods the fraud SDK might expose
+      try {
+        if (typeof fraudSDK.getSessionId === "function") {
+          return fraudSDK.getSessionId();
+        }
+        if (typeof fraudSDK.sessionId === "function") {
+          return fraudSDK.sessionId();
+        }
+        if (typeof fraudSDK.getSession === "function") {
+          const session = fraudSDK.getSession();
+          return session?.id || session?.sessionId;
+        }
+        // Static property
+        if (fraudSDK.sessionId && typeof fraudSDK.sessionId === "string") {
+          return fraudSDK.sessionId;
+        }
+      } catch (error) {
+        console.warn("Error getting fraud session ID:", error);
+      }
+
+      return undefined;
     },
     isReady: () => isReady,
   }));
@@ -221,16 +295,43 @@ export default FinixTokenizationForm;
 
 function normalizeToken(res) {
   try {
-    if (!res) return { id: undefined, brand: "UNKNOWN", last_four: "0000" };
-    // Per Finix docs: response shape is { data: { id: "TK...", ... } }
-    const tokenData = res.data || {};
-    const token = tokenData.id; // Should be TK-prefixed
+    if (!res) {
+      throw new Error("Empty tokenization response");
+    }
+
+    // Handle multiple shapes:
+    // 1) { data: { id: 'TK...' } }
+    // 2) { id: 'TK...' }
+    // 3) direct string 'TK...'
+    let tokenData = {};
+    let token = undefined;
+
+    if (typeof res === "string") {
+      token = res;
+      tokenData = {};
+    } else if (res && typeof res === "object") {
+      if (res.data && typeof res.data === "object") {
+        tokenData = res.data;
+        token = res.data.id;
+      } else {
+        tokenData = res;
+        token = res.id;
+      }
+    }
+
+    // Validate TK token format (Finix uses "TK" prefix, not always "TK_")
+    if (!token || (!token.startsWith("TK_") && !token.startsWith("TK"))) {
+      throw new Error(`Invalid token format: expected TK prefix, got ${token}`);
+    }
+
     return {
       id: token,
-      brand: tokenData.brand || "UNKNOWN",
-      last_four: tokenData.last_four || tokenData.lastFour || "0000",
+      brand: tokenData.brand || tokenData.brand_name || "UNKNOWN",
+      last_four:
+        tokenData.last_four || tokenData.lastFour || tokenData.last4 || "0000",
     };
-  } catch {
-    return { id: undefined, brand: "UNKNOWN", last_four: "0000" };
+  } catch (error) {
+    console.error("Token normalization error:", error);
+    throw new Error(`Token processing failed: ${error.message}`);
   }
 }

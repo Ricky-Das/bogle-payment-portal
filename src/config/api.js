@@ -1,6 +1,7 @@
 // New minimal API utility for the Bogle Payment Portal
 
 export const API_BASE =
+  import.meta.env.VITE_API_BASE ||
   "https://tstd5z72k1.execute-api.us-east-1.amazonaws.com";
 
 export const generateIdempotencyKey = () =>
@@ -9,16 +10,30 @@ export const generateIdempotencyKey = () =>
     : `uuid_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 
 export async function createCheckoutSession(params) {
+  const idempotencyKey = generateIdempotencyKey();
+
   const res = await fetch(`${API_BASE}/v1/checkout-sessions`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "Idempotency-Key": idempotencyKey,
+    },
     body: JSON.stringify(params),
   });
+
+  const data = await safeParse(res);
   if (!res.ok) {
-    const err = await safeParse(res);
-    throw new Error(err?.error || "Failed to create session");
+    const err = new Error(
+      data?.message ||
+        data?.error ||
+        res.statusText ||
+        "Failed to create session"
+    );
+    err.code = (data && (data.code || data.error)) || String(res.status);
+    err.status = res.status;
+    err.details = data || null;
+    throw err;
   }
-  const data = await res.json();
   return data?.id;
 }
 
@@ -32,8 +47,8 @@ export async function confirmPayment(
 
   const res = await fetch(`${API_BASE}/v1/payments`, {
     method: "POST",
-      headers: {
-        "Content-Type": "application/json",
+    headers: {
+      "Content-Type": "application/json",
       "Idempotency-Key": idempotencyKey,
     },
     body: JSON.stringify({
