@@ -69,6 +69,29 @@ You can also access the smoke test at `/smoke-test` (visible only in development
 - API connectivity
 - Finix hosted fields/tokenization presence
 
+### Offline Demo Mode (No Backend Calls)
+
+Enable a fully operational payment portal demo without any backend/network calls. This uses a mock API and localStorage to simulate sessions, payments, and a transactions list.
+
+How to enable:
+
+- Set `VITE_DEMO_MODE=true` in `.env.local`, or
+- Append `?demo=1` to the URL, or
+- Set `localStorage.setItem('bogle_demo_mode','true')` in the browser console.
+
+What it does:
+
+- Disables network calls at runtime except for local assets and optional Finix SDK scripts.
+- Replaces `createCheckoutSession`, `confirmPayment`, and `pollUntilComplete` with a client-side mock.
+- Uses stub tokenization so you can complete the payment flow without Finix config.
+- Stores simulated transactions in `localStorage` and exposes a `Transactions` page when demo mode is active.
+
+Notes:
+
+- You’ll see a banner noting Demo Mode in non-production builds.
+- To reset demo data, clear site storage or run `localStorage.removeItem('bogle_demo_store_v1')`.
+- Turn off demo mode by unsetting `VITE_DEMO_MODE`, removing the `?demo=1` query, or calling `localStorage.removeItem('bogle_demo_mode')`.
+
 ## Payment flow (frontend)
 
 1. Create checkout session

@@ -15,6 +15,7 @@ import Logo from "./components/Logo";
 import DiagnosticsBanner from "./components/DiagnosticsBanner";
 import { Link } from "react-router-dom";
 import TransactionsPage from "./pages/TransactionsPage";
+import { IS_DEMO_MODE } from "./config/demo";
 
 function App() {
   return (
@@ -38,7 +39,7 @@ function App() {
             >
               Pay
             </Link>
-            {import.meta.env.MODE === "development" && (
+            {(import.meta.env.MODE === "development" || IS_DEMO_MODE) && (
               <Link
                 to="/smoke-test"
                 className="text-gray-500 hover:text-blue-600 text-xs"
@@ -46,7 +47,14 @@ function App() {
                 Test
               </Link>
             )}
-            {/* Transactions link removed with legacy API */}
+            {IS_DEMO_MODE && (
+              <Link
+                to="/transactions"
+                className="text-gray-700 hover:text-blue-600"
+              >
+                Transactions
+              </Link>
+            )}
           </div>
         </div>
       </nav>
@@ -66,6 +74,9 @@ function App() {
           <Route path="/payment-method" element={<PaymentMethodPage />} />
           <Route path="/confirmation" element={<ConfirmationPage />} />
           <Route path="/smoke-test" element={<SmokeTestPage />} />
+          {IS_DEMO_MODE && (
+            <Route path="/transactions" element={<TransactionsPage />} />
+          )}
           {/* Legacy Transactions route removed */}
         </Routes>
       </div>

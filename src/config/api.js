@@ -1,5 +1,8 @@
 // New minimal API utility for the Bogle Payment Portal
 
+import { IS_DEMO_MODE } from "./demo";
+import * as mock from "./mockApi";
+
 export const API_BASE =
   import.meta.env.VITE_API_BASE ||
   "https://tstd5z72k1.execute-api.us-east-1.amazonaws.com";
@@ -10,6 +13,7 @@ export const generateIdempotencyKey = () =>
     : `uuid_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 
 export async function createCheckoutSession(params) {
+  if (IS_DEMO_MODE) return mock.createCheckoutSession(params);
   const idempotencyKey = generateIdempotencyKey();
 
   const res = await fetch(`${API_BASE}/v1/checkout-sessions`, {
@@ -43,6 +47,8 @@ export async function confirmPayment(
   postalCode,
   fraudSessionId
 ) {
+  if (IS_DEMO_MODE)
+    return mock.confirmPayment(sessionId, cardToken, postalCode, fraudSessionId);
   const idempotencyKey = generateIdempotencyKey();
 
   const res = await fetch(`${API_BASE}/v1/payments`, {
@@ -76,12 +82,14 @@ export async function confirmPayment(
 }
 
 export async function getSession(sessionId) {
+  if (IS_DEMO_MODE) return mock.getSession(sessionId);
   const res = await fetch(`${API_BASE}/v1/checkout-sessions/${sessionId}`);
   if (!res.ok) throw new Error("Failed to load session");
   return res.json();
 }
 
 export async function pollUntilComplete(sessionId) {
+  if (IS_DEMO_MODE) return mock.pollUntilComplete(sessionId);
   // Poll until session status is paid or failed
   // 2 second interval
   for (;;) {

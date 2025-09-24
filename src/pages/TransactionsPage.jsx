@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { loadDemoStore } from "../config/demo";
 
 function TransactionsPage() {
   const [transactions, setTransactions] = useState([]);
@@ -11,8 +12,10 @@ function TransactionsPage() {
     setIsLoading(true);
     setError(null);
     try {
-      // Legacy transactions API removed. Keep UI shell with empty state.
-      setTransactions([]);
+      const store = loadDemoStore();
+      const tx = Array.isArray(store.transactions) ? store.transactions : [];
+      const slice = tx.slice(offset, offset + limit);
+      setTransactions(slice);
     } catch (err) {
       setError(err.message || "Failed to load transactions");
     } finally {

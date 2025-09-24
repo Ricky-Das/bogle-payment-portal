@@ -5,6 +5,7 @@ import {
   pollUntilComplete,
 } from "../config/api";
 import FinixTokenizationForm from "../components/FinixTokenizationForm";
+import { IS_DEMO_MODE } from "../config/demo";
 
 const SmokeTestPage = () => {
   const [testResults, setTestResults] = useState([]);
@@ -29,24 +30,30 @@ const SmokeTestPage = () => {
     setTestResults([]);
 
     try {
-      // Test 1: Environment Check
+      // Test 1: Environment Check (skip in demo mode)
       setCurrentStep("Checking environment variables...");
-      const requiredEnvs = ["VITE_FINIX_APPLICATION_ID", "VITE_FINIX_SDK_URL"];
-      const missingEnvs = requiredEnvs.filter((env) => !import.meta.env[env]);
-
-      if (missingEnvs.length > 0) {
+      if (IS_DEMO_MODE) {
+        addResult("Environment Check", "INFO", "Skipped in demo mode");
+      } else {
+        const requiredEnvs = [
+          "VITE_FINIX_APPLICATION_ID",
+          "VITE_FINIX_SDK_URL",
+        ];
+        const missingEnvs = requiredEnvs.filter((env) => !import.meta.env[env]);
+        if (missingEnvs.length > 0) {
+          addResult(
+            "Environment Check",
+            "FAIL",
+            `Missing: ${missingEnvs.join(", ")}`
+          );
+          return;
+        }
         addResult(
           "Environment Check",
-          "FAIL",
-          `Missing: ${missingEnvs.join(", ")}`
+          "PASS",
+          "All required environment variables present"
         );
-        return;
       }
-      addResult(
-        "Environment Check",
-        "PASS",
-        "All required environment variables present"
-      );
 
       // Test 2: Create Checkout Session
       setCurrentStep("Creating checkout session...");
@@ -111,36 +118,40 @@ const SmokeTestPage = () => {
         addResult("Finix Tokenization", "FAIL", `Error: ${error.message}`);
       }
 
-      // Test 4: API Connectivity
+      // Test 4: API Connectivity (skip in demo mode)
       setCurrentStep("Testing API connectivity...");
-      try {
-        const response = await fetch(
-          `${
-            import.meta.env.VITE_API_BASE ||
-            "https://tstd5z72k1.execute-api.us-east-1.amazonaws.com"
-          }/v1/checkout-sessions/${sessionId}`
-        );
-
-        if (response.ok) {
-          const session = await response.json();
-          addResult(
-            "API Connectivity",
-            "PASS",
-            `Retrieved session: ${session.status || "active"}`
+      if (IS_DEMO_MODE) {
+        addResult("API Connectivity", "INFO", "Skipped in demo mode");
+      } else {
+        try {
+          const response = await fetch(
+            `${
+              import.meta.env.VITE_API_BASE ||
+              "https://tstd5z72k1.execute-api.us-east-1.amazonaws.com"
+            }/v1/checkout-sessions/${sessionId}`
           );
-        } else {
+
+          if (response.ok) {
+            const session = await response.json();
+            addResult(
+              "API Connectivity",
+              "PASS",
+              `Retrieved session: ${session.status || "active"}`
+            );
+          } else {
+            addResult(
+              "API Connectivity",
+              "FAIL",
+              `HTTP ${response.status}: ${response.statusText}`
+            );
+          }
+        } catch (error) {
           addResult(
             "API Connectivity",
             "FAIL",
-            `HTTP ${response.status}: ${response.statusText}`
+            `Network error: ${error.message}`
           );
         }
-      } catch (error) {
-        addResult(
-          "API Connectivity",
-          "FAIL",
-          `Network error: ${error.message}`
-        );
       }
 
       addResult(

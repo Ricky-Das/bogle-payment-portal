@@ -5,6 +5,7 @@ import React, {
   useImperativeHandle,
   useState,
 } from "react";
+import { IS_DEMO_MODE } from "../config/demo";
 // Finix uses applicationId + environment (no client publishable key)
 
 const DEFAULT_FINIX_SDK_URL = import.meta.env.VITE_FINIX_SDK_URL || "";
@@ -285,18 +286,15 @@ const FinixTokenizationForm = forwardRef(function FinixTokenizationForm(
           "Finix tokenization failed - check console for details"
         );
       }
-      // Check if we're in development and should allow fallback
-      if (import.meta.env.MODE === "production") {
+      // In demo mode, always allow stub tokenization without network
+      if (import.meta.env.MODE === "production" && !IS_DEMO_MODE) {
         throw new Error(
           "Finix tokenization is required in production but SDK not available"
         );
       }
 
       // Development fallback - only if no real tokenization is available
-      console.warn(
-        "Finix SDK not available - using development stub tokenization"
-      );
-      console.warn("This will NOT work with real payment processing!");
+      console.warn("Using stub tokenization (demo mode or development)");
 
       return new Promise((resolve) => {
         setTimeout(() => {

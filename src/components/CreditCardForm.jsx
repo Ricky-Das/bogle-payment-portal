@@ -5,6 +5,7 @@ import {
   pollUntilComplete,
 } from "../config/api";
 import FinixTokenizationForm from "./FinixTokenizationForm";
+import { IS_DEMO_MODE } from "../config/demo";
 
 const CreditCardForm = ({ onSuccess, onError, amount = 52.82 }) => {
   const [formData, setFormData] = useState({
@@ -134,14 +135,17 @@ const CreditCardForm = ({ onSuccess, onError, amount = 52.82 }) => {
     setIsProcessing(true);
 
     try {
-      // Ensure tokenization is configured
-      if (
-        !import.meta.env.VITE_FINIX_SDK_URL ||
-        !import.meta.env.VITE_FINIX_APPLICATION_ID
-      ) {
-        throw new Error(
-          "Payment temporarily unavailable: Finix is not configured"
-        );
+      // In demo mode we allow payment without Finix env configuration
+      if (!IS_DEMO_MODE) {
+        // Ensure tokenization is configured when not in demo
+        if (
+          !import.meta.env.VITE_FINIX_SDK_URL ||
+          !import.meta.env.VITE_FINIX_APPLICATION_ID
+        ) {
+          throw new Error(
+            "Payment temporarily unavailable: Finix is not configured"
+          );
+        }
       }
       // 1) Create checkout session
       const sessionId = await createCheckoutSession({
