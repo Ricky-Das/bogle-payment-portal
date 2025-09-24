@@ -21,3 +21,7 @@ terraform.tfstate
 terraform.tfstate.backup
 *.tfvars
 *.tfvars.json 
+
+.env
+.env.local
+.env.production
