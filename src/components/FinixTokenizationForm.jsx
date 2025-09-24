@@ -45,10 +45,14 @@ const FinixTokenizationForm = forwardRef(function FinixTokenizationForm(
       }
 
       // Load fraud SDK if provided
+      let fraudSdkLoaded = false;
       try {
-        await loadScriptOnce(FINIX_FRAUD_SDK_URL);
-      } catch {
-        // optional
+        if (FINIX_FRAUD_SDK_URL) {
+          fraudSdkLoaded = await loadScriptOnce(FINIX_FRAUD_SDK_URL);
+          console.log("Finix Fraud SDK loaded:", fraudSdkLoaded);
+        }
+      } catch (error) {
+        console.warn("Failed to load Finix Fraud SDK:", error);
       }
 
       // Attempt to initialize Finix tokenization form if available
@@ -80,6 +84,45 @@ const FinixTokenizationForm = forwardRef(function FinixTokenizationForm(
           }
         }
       } catch {}
+
+      // Initialize Fraud SDK if available
+      if (fraudSdkLoaded && finixGlobal) {
+        try {
+          const Fraud =
+            finixGlobal.Fraud || window.FinixFraud || window.finixFraud;
+          if (Fraud) {
+            console.log("Initializing Finix Fraud SDK...");
+
+            // Try multiple initialization patterns
+            if (typeof Fraud.configure === "function") {
+              Fraud.configure({
+                applicationId: FINIX_APPLICATION_ID,
+                environment: FINIX_ENVIRONMENT,
+              });
+            } else if (typeof Fraud.init === "function") {
+              Fraud.init({
+                applicationId: FINIX_APPLICATION_ID,
+                environment: FINIX_ENVIRONMENT,
+              });
+            } else if (typeof Fraud.setup === "function") {
+              Fraud.setup({
+                applicationId: FINIX_APPLICATION_ID,
+                environment: FINIX_ENVIRONMENT,
+              });
+            } else if (typeof Fraud === "function") {
+              Fraud({
+                applicationId: FINIX_APPLICATION_ID,
+                environment: FINIX_ENVIRONMENT,
+              });
+            }
+
+            console.log("Finix Fraud SDK initialized");
+          }
+        } catch (error) {
+          console.warn("Failed to initialize Finix Fraud SDK:", error);
+        }
+      }
+
       // Canonical API per docs: CardTokenForm("container-id", options)
       if (finixGlobal && typeof finixGlobal.CardTokenForm === "function") {
         try {
@@ -237,9 +280,10 @@ const FinixTokenizationForm = forwardRef(function FinixTokenizationForm(
       });
     },
     getFraudSessionId() {
-      // Check multiple possible fraud SDK namespaces
+      // Check multiple possible fraud SDK namespaces in priority order
+      const finixGlobal = window.Finix || window.finix || {};
       const fraudSDK =
-        window.finixFraud || window.FinixFraud || window.Finix?.Fraud || null;
+        finixGlobal.Fraud || window.FinixFraud || window.finixFraud || null;
 
       if (!fraudSDK) {
         console.warn(
@@ -250,20 +294,51 @@ const FinixTokenizationForm = forwardRef(function FinixTokenizationForm(
 
       // Try different methods the fraud SDK might expose
       try {
+        // Most common pattern: getSessionId()
         if (typeof fraudSDK.getSessionId === "function") {
-          return fraudSDK.getSessionId();
+          const sessionId = fraudSDK.getSessionId();
+          console.log(
+            "Fraud session ID obtained:",
+            sessionId ? "present" : "empty"
+          );
+          return sessionId;
         }
+
+        // Alternative: sessionId as function
         if (typeof fraudSDK.sessionId === "function") {
-          return fraudSDK.sessionId();
+          const sessionId = fraudSDK.sessionId();
+          console.log(
+            "Fraud session ID (via sessionId()):",
+            sessionId ? "present" : "empty"
+          );
+          return sessionId;
         }
+
+        // Alternative: getSession() returning object
         if (typeof fraudSDK.getSession === "function") {
           const session = fraudSDK.getSession();
-          return session?.id || session?.sessionId;
+          const sessionId = session?.id || session?.sessionId;
+          console.log(
+            "Fraud session ID (via getSession()):",
+            sessionId ? "present" : "empty"
+          );
+          return sessionId;
         }
+
         // Static property
         if (fraudSDK.sessionId && typeof fraudSDK.sessionId === "string") {
+          console.log("Fraud session ID (static property):", "present");
           return fraudSDK.sessionId;
         }
+
+        // Check if the fraud SDK itself has an id property
+        if (fraudSDK.id && typeof fraudSDK.id === "string") {
+          console.log("Fraud session ID (direct id property):", "present");
+          return fraudSDK.id;
+        }
+
+        console.warn("Fraud SDK loaded but no session ID method found");
+        console.log("Available fraud SDK methods:", Object.keys(fraudSDK));
       } catch (error) {
         console.warn("Error getting fraud session ID:", error);
       }

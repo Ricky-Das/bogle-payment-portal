@@ -176,9 +176,11 @@ const CreditCardForm = ({ onSuccess, onError, amount = 52.82 }) => {
         undefined;
 
       if (!fraudSessionId) {
-        console.warn(
-          "Fraud session ID not available - proceeding without fraud data"
+        console.info(
+          "No fraud session ID - proceeding without enhanced risk data"
         );
+      } else {
+        console.log("Fraud session collected for enhanced risk assessment");
       }
 
       // 4) Confirm payment with AVS ZIP validation
