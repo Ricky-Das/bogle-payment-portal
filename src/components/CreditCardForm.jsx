@@ -21,7 +21,6 @@ const CreditCardForm = ({ onSuccess, onError, amount = 52.82 }) => {
       state: "",
       zipCode: "",
     },
-    saveCard: false,
   });
 
   const [validation, setValidation] = useState({
@@ -352,19 +351,6 @@ const CreditCardForm = ({ onSuccess, onError, amount = 52.82 }) => {
               title="Enter a valid ZIP code for address verification"
             />
           </div>
-        </div>
-
-        <div className="flex items-start space-x-2">
-          <input
-            type="checkbox"
-            name="saveCard"
-            checked={formData.saveCard}
-            onChange={handleInputChange}
-            className="mt-1"
-          />
-          <label className="text-sm text-gray-700">
-            Save this card for future use
-          </label>
         </div>
 
         <button
