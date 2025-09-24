@@ -12,7 +12,6 @@ import PaymentMethodPage from "./pages/PaymentMethodPage";
 import ConfirmationPage from "./pages/ConfirmationPage";
 import SmokeTestPage from "./pages/SmokeTestPage";
 import Logo from "./components/Logo";
-import DiagnosticsBanner from "./components/DiagnosticsBanner";
 import { Link } from "react-router-dom";
 import TransactionsPage from "./pages/TransactionsPage";
 import { IS_DEMO_MODE } from "./config/demo";
@@ -20,8 +19,6 @@ import { IS_DEMO_MODE } from "./config/demo";
 function App() {
   return (
     <div className="min-h-screen bg-gray-100">
-      {/* Development Diagnostics */}
-      <DiagnosticsBanner />
 
       {/* Navigation */}
       <nav className="px-6 py-4 border-b border-white/20 backdrop-blur-sm bg-white/70">
