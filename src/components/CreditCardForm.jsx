@@ -35,11 +35,10 @@ const CreditCardForm = ({ onSuccess, onError, amount = 52.82 }) => {
   const [finixReady, setFinixReady] = useState(false);
 
   useEffect(() => {
-    // Initialize Finix.js (this would be loaded from Finix CDN in production)
-    // For now, we'll simulate the tokenization process
+    // Initialize Finix configuration from environment variables
     setFinixConfig({
-      environment: "sandbox", // This should come from your backend
-      applicationId: "APchtKYW94eNhmDAQtRqpNZy", // This should come from your backend
+      environment: import.meta.env.VITE_FINIX_ENVIRONMENT || "sandbox",
+      applicationId: import.meta.env.VITE_FINIX_APPLICATION_ID || "",
     });
   }, []);
 

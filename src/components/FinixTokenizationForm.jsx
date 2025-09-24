@@ -80,103 +80,34 @@ const FinixTokenizationForm = forwardRef(function FinixTokenizationForm(
           }
         }
       } catch {}
-      if (
-        finixGlobal &&
-        typeof finixGlobal.createTokenizationForm === "function"
-      ) {
-        try {
-          const instance = finixGlobal.createTokenizationForm({
-            applicationId: FINIX_APPLICATION_ID,
-            environment: FINIX_ENVIRONMENT,
-            container: `#${formContainerId}`,
-          });
-          // Some SDK versions require an explicit mount/render
-          try {
-            if (typeof instance.mount === "function") instance.mount();
-          } catch {}
-          try {
-            if (typeof instance.render === "function") instance.render();
-          } catch {}
-          finixInstanceRef.current = instance;
-          if (!cancelled) {
-            setIsReady(true);
-            if (typeof onReady === "function") onReady(true);
-          }
-          return;
-        } catch {
-          // Fall through to stub
-        }
-      }
-      // Alternate API: CardTokenForm (found in your environment)
+      // Canonical API per docs: CardTokenForm("container-id", options)
       if (finixGlobal && typeof finixGlobal.CardTokenForm === "function") {
         try {
-          // Use options signature which your SDK expects
-          const instance = new finixGlobal.CardTokenForm(formContainerId, {
-            applicationId: FINIX_APPLICATION_ID,
-            environment: FINIX_ENVIRONMENT,
-            submitOptions: {
-              applicationId: FINIX_APPLICATION_ID,
-              environment: FINIX_ENVIRONMENT,
-            },
+          // Per docs: constructor is CardTokenForm(elementId, options) - NO new keyword
+          const instance = finixGlobal.CardTokenForm(formContainerId, {
+            showLabels: true,
+            showPlaceholders: true,
+            showAddress: false, // We collect ZIP separately for AVS
           });
-          try {
-            if (typeof instance.mount === "function") instance.mount();
-          } catch {}
-          try {
-            if (typeof instance.render === "function") instance.render();
-          } catch {}
+
+          // Expose for debugging
           window.finixCardForm = instance;
+
           finixInstanceRef.current = {
             async tokenize() {
               const env = FINIX_ENVIRONMENT;
               const appId = FINIX_APPLICATION_ID;
-
-              // Prefer callback signature: submit(env, appId, cb) or submit(appId, env, cb)
-              if (typeof instance.submit === "function") {
-                try {
-                  const res = await new Promise((resolve, reject) => {
-                    try {
-                      instance.submit(env, appId, (err, data) => {
-                        if (err) return reject(err);
-                        resolve(data);
-                      });
-                    } catch (e1) {
-                      try {
-                        instance.submit(appId, env, (err, data) => {
-                          if (err) return reject(err);
-                          resolve(data);
-                        });
-                      } catch (e2) {
-                        reject(e2);
-                      }
-                    }
-                  });
-                  return normalizeToken(res);
-                } catch (_) {
-                  // fall through
-                }
+              if (typeof instance.submit !== "function") {
+                throw new Error("Tokenization not available");
               }
-
-              // Promise-based fallbacks
-              if (typeof instance.createToken === "function") {
-                try {
-                  const res = await instance.createToken({
-                    applicationId: appId,
-                    environment: env,
-                  });
-                  return normalizeToken(res);
-                } catch {}
-              }
-              if (typeof instance.tokenize === "function") {
-                try {
-                  const res = await instance.tokenize({
-                    applicationId: appId,
-                    environment: env,
-                  });
-                  return normalizeToken(res);
-                } catch {}
-              }
-              throw new Error("Tokenization not available");
+              // Per docs: submit(environment, applicationId, callback)
+              const res = await new Promise((resolve, reject) => {
+                instance.submit(env, appId, (err, data) => {
+                  if (err) return reject(err);
+                  resolve(data);
+                });
+              });
+              return normalizeToken(res);
             },
           };
           if (!cancelled) {
@@ -186,29 +117,7 @@ const FinixTokenizationForm = forwardRef(function FinixTokenizationForm(
           return;
         } catch {}
       }
-      // Fallback: some SDK variants expose createField + tokenize globally
-      if (finixGlobal && typeof finixGlobal.createField === "function") {
-        try {
-          const form = finixGlobal.createField("card", {
-            container: `#${formContainerId}`,
-          });
-          if (typeof form.mount === "function")
-            form.mount(`#${formContainerId}`);
-          finixInstanceRef.current = {
-            tokenize: async () => {
-              if (typeof finixGlobal.tokenize === "function") {
-                return await finixGlobal.tokenize();
-              }
-              throw new Error("Tokenization not available");
-            },
-          };
-          if (!cancelled) {
-            setIsReady(true);
-            if (typeof onReady === "function") onReady(true);
-          }
-          return;
-        } catch {}
-      }
+      // If no CardTokenForm, mark ready but tokenization won't work
       if (!cancelled) {
         setIsReady(true);
         if (typeof onReady === "function") onReady(true);
@@ -313,12 +222,13 @@ export default FinixTokenizationForm;
 function normalizeToken(res) {
   try {
     if (!res) return { id: undefined, brand: "UNKNOWN", last_four: "0000" };
-    // Common shapes: { id, brand, last4 } or { data: { id, brand, last4 } }
-    const data = res.data || res;
+    // Per Finix docs: response shape is { data: { id: "TK...", ... } }
+    const tokenData = res.data || {};
+    const token = tokenData.id; // Should be TK-prefixed
     return {
-      id: data.id || data.token || data.paymentInstrumentToken,
-      brand: data.brand || data.cardBrand || "UNKNOWN",
-      last_four: data.last4 || data.last_four || data.lastFour || "0000",
+      id: token,
+      brand: tokenData.brand || "UNKNOWN",
+      last_four: tokenData.last_four || tokenData.lastFour || "0000",
     };
   } catch {
     return { id: undefined, brand: "UNKNOWN", last_four: "0000" };
