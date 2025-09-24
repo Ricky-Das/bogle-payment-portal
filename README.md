@@ -1,59 +1,200 @@
-# Bogle Payment Portal
+## Bogle Payment Portal
 
-A secure React-based payment portal with AWS infrastructure, supporting both credit card and ACH payments through Finix and Plaid integration.
+React + Vite frontend for card payments through Finix, backed by AWS API Gateway + Lambda. This repository contains the customer-facing UI and the client-side integrations with Finix tokenization and Bogle’s payment APIs.
 
-## ✨ Features
+### Highlights
 
-- **Modern Frontend**: React 18 + Vite with Tailwind CSS
-- **Secure Payments**: Credit card and ACH processing via Finix
-- **Bank Verification**: Plaid Link integration for instant account verification
-- **AWS Infrastructure**: Serverless backend with Lambda, API Gateway, and DynamoDB
-- **Complete KYC Flow**: Identity verification and onboarding process
-- **Security First**: AWS Secrets Manager, KMS encryption, WAF protection
+- **React 18 + Vite + Tailwind** for a modern DX
+- **Finix tokenization (Finix.js)** via hosted fields; client receives TK tokens
+- **Hardened API client** with idempotency keys and robust error handling
+- **Diagnostics banner** to flag missing env vars in development
+- **Smoke test page** to validate configuration and connectivity
 
-## 🚀 Quick Start
+Note: ACH and bank-link flows are currently disabled in the UI. Focus is card payments.
 
-### Local Development
+## Architecture at a glance
+
+- **Frontend**: React SPA (Vite), calls Bogle APIs
+  - Tokenizes card details in-browser via Finix Hosted Fields (TK tokens)
+  - Calls Bogle’s Lambda APIs to create sessions and confirm payments
+- **Backend (external to this repo)**: AWS API Gateway + Lambda (create session, get session, confirm payment, webhook ingress)
+
+Key frontend files:
+
+- `src/components/CreditCardForm.jsx` – orchestrates the payment flow
+- `src/components/FinixTokenizationForm.jsx` – loads Finix SDK and hosted fields; returns TK tokens
+- `src/config/api.js` – API client with idempotency headers and polling
+- `src/components/DiagnosticsBanner.jsx` – dev-only env checker
+- `src/pages/SmokeTestPage.jsx` – end-to-end config sanity checks
+
+Routes:
+
+- `/payment-method` – main payment page (card)
+- `/confirmation` – success page with payment summary
+- `/smoke-test` – dev-only utilities/tests
+
+## Environment configuration
+
+Create `.env.local` in the project root:
+
+```env
+# Bogle API base (AWS API Gateway stage base URL)
+VITE_API_BASE=https://tstd5z72k1.execute-api.us-east-1.amazonaws.com
+
+# Finix tokenization
+VITE_FINIX_APPLICATION_ID=APchtKYW94eNhmDAQtRqpNZy
+VITE_FINIX_ENVIRONMENT=sandbox
+VITE_FINIX_SDK_URL=https://js.finixpayments.com/v1/finix.js
+
+# Optional – if your Finix SDK exposes fraud capabilities, this may be unused
+# VITE_FINIX_FRAUD_SDK_URL= (usually not required; fraud is often in main SDK)
+```
+
+Diagnostics:
+
+- In development, a banner shows if required variables are missing.
+- To reduce console noise, unset `VITE_FINIX_FRAUD_SDK_URL` if you don’t have a separate fraud script.
+
+## Running locally
+
 ```bash
-# Install dependencies
 npm install
-
-# Start with mock API (recommended for frontend development)
-./start-dev.sh
-
-# Or start with Vite directly
 npm run dev
+# http://localhost:5173
 ```
 
-### Production Deployment
-See the comprehensive [SETUP_GUIDE.md](SETUP_GUIDE.md) for full production deployment instructions.
+You can also access the smoke test at `/smoke-test` (visible only in development) to validate:
 
-## 📂 Project Structure
+- Environment variables
+- API connectivity
+- Finix hosted fields/tokenization presence
+
+## Payment flow (frontend)
+
+1. Create checkout session
+
+```js
+const sessionId = await createCheckoutSession({
+  line_items: [
+    { name: "Product", quantity: 1, unit_amount: 1000, currency: "USD" },
+  ],
+  success_url: `${window.location.origin}/confirmation`,
+  cancel_url: `${window.location.origin}/payment-method`,
+  customer: { email: "customer@example.com", name: "Customer Name" },
+});
+```
+
+2. Tokenize card (Finix Hosted Fields)
+
+```js
+const cardToken = await tokenizationRef.current.tokenize();
+// cardToken.id is the TK token required by the backend
+```
+
+3. Confirm payment
+
+```js
+const payment = await confirmPayment(
+  sessionId,
+  cardToken.id,
+  billingZip, // for AVS
+  fraudSessionId // optional if fraud capabilities exist
+);
+```
+
+4. Poll for completion
+
+```js
+const finalStatus = await pollUntilComplete(sessionId);
+if (finalStatus === "paid") {
+  // navigate to /confirmation
+}
+```
+
+## API client details (`src/config/api.js`)
+
+- `API_BASE`: from `VITE_API_BASE` with default to the current AWS URL
+- `createCheckoutSession(params)`
+  - Sends `Idempotency-Key` header
+  - Returns `sessionId`
+- `confirmPayment(sessionId, cardToken, postalCode, fraudSessionId)`
+  - Sends `Idempotency-Key` header
+  - Body shape matches the Lambda: `{ session_id, fraud_session_id, payment_method: { type: 'card', card_token, billing_postal_code } }`
+- `pollUntilComplete(sessionId)`
+  - Polls `/v1/checkout-sessions/:id` until status is `paid` or `failed`
+
+## Components
+
+- `CreditCardForm.jsx`
+
+  - Loads hosted fields, validates ZIP, orchestrates session → tokenize → confirm → poll
+  - User-friendly error mapping and disabled states
+
+- `FinixTokenizationForm.jsx`
+
+  - Loads Finix SDK from `VITE_FINIX_SDK_URL`
+  - Initializes card hosted fields and returns a normalized token object `{ id: 'TK...', brand, last_four }`
+  - Attempts common submit signatures; dev-only stub token if SDK missing (never in production)
+  - Fraud support: If exposed by the loaded SDK, initializes and returns a session id via `getFraudSessionId()`; otherwise silently proceeds
+
+- `DiagnosticsBanner.jsx`
+
+  - Dev-only banner listing missing required/optional env vars
+
+- `SmokeTestPage.jsx`
+  - Quick checks for envs, session creation, API connectivity, and tokenization presence
+
+## Test data (Finix sandbox)
+
+Use these in hosted fields:
 
 ```
-.
-├─ src/                    # React application source
-│  ├─ components/          # Reusable UI components
-│  ├─ pages/              # Page components
-│  └─ config/             # Configuration files
-├─ infrastructure/         # AWS infrastructure code
-│  ├─ terraform/          # Terraform configurations
-│  └─ lambda/             # Lambda function source
-├─ SETUP_GUIDE.md         # Complete deployment guide
-├─ ONBOARDING_FLOW.md     # User onboarding documentation
-└─ check_status.sh        # Infrastructure health check
+Visa (success):      4895142232120006
+Mastercard (success): 5555555555554444
+Declined:            4000000000000002
+Expired:             4000000000000069
+
+Expiry: any future (e.g., 12/2025)
+CVV:    any 3–4 digits (e.g., 123)
+ZIP:    94105 (any valid US ZIP)
 ```
 
-## 🔧 Available Scripts
+## Troubleshooting
 
-- `npm run dev` - Start development server
-- `npm run dev:mock` - Start with mock API server
-- `npm run build` - Build for production
-- `npm run preview` - Preview production build
-- `./start-dev.sh` - Interactive development setup
-- `./check_status.sh` - Check deployed infrastructure status
+- **Finix SDK not loading**
 
+  - Check `VITE_FINIX_SDK_URL`
+  - Inspect network tab for script errors
+  - Verify global `window.Finix` exists
 
-## 📝 License
+- **Tokenization errors**
+
+  - Ensure Finix hosted fields are visible and ready
+  - We accept `TK` tokens in multiple response shapes; check console for normalization logs
+
+- **Fraud session missing**
+
+  - Informational only; fraud capabilities may not be present in your SDK build
+  - When available, code auto-initializes and adds `fraud_session_id`
+
+- **API errors**
+  - Check `VITE_API_BASE`
+  - See console for structured error details from `confirmPayment`
+
+## Scripts
+
+- `npm run dev` – start Vite dev server
+- `npm run build` – production build
+- `npm run preview` – preview build locally
+- `./start-dev.sh` – optional helper to start with the mock/dev server
+- `./check_status.sh` – infra health check (external)
+
+## Notes for production
+
+- Set `VITE_FINIX_ENVIRONMENT=production` and use your live `VITE_FINIX_APPLICATION_ID`
+- Ensure `VITE_API_BASE` points to the production API Gateway
+- Do not rely on dev tokenization fallback; Finix SDK must be present
+
+## License
 
 MIT
