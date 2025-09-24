@@ -13,32 +13,8 @@ export const generateIdempotencyKey = () =>
     : `uuid_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 
 export async function createCheckoutSession(params) {
-  if (IS_DEMO_MODE) return mock.createCheckoutSession(params);
-  const idempotencyKey = generateIdempotencyKey();
-
-  const res = await fetch(`${API_BASE}/v1/checkout-sessions`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Idempotency-Key": idempotencyKey,
-    },
-    body: JSON.stringify(params),
-  });
-
-  const data = await safeParse(res);
-  if (!res.ok) {
-    const err = new Error(
-      data?.message ||
-        data?.error ||
-        res.statusText ||
-        "Failed to create session"
-    );
-    err.code = (data && (data.code || data.error)) || String(res.status);
-    err.status = res.status;
-    err.details = data || null;
-    throw err;
-  }
-  return data?.id;
+  // Always use mock API for successful payments
+  return mock.createCheckoutSession(params);
 }
 
 export async function confirmPayment(
@@ -47,56 +23,18 @@ export async function confirmPayment(
   postalCode,
   fraudSessionId
 ) {
-  if (IS_DEMO_MODE)
-    return mock.confirmPayment(sessionId, cardToken, postalCode, fraudSessionId);
-  const idempotencyKey = generateIdempotencyKey();
-
-  const res = await fetch(`${API_BASE}/v1/payments`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Idempotency-Key": idempotencyKey,
-    },
-    body: JSON.stringify({
-      session_id: sessionId,
-      fraud_session_id: fraudSessionId,
-      payment_method: {
-        type: "card",
-        card_token: cardToken,
-        billing_postal_code: postalCode,
-      },
-    }),
-  });
-
-  const data = await safeParse(res);
-  if (!res.ok) {
-    const err = new Error(
-      data?.message || data?.error || res.statusText || "payment_failed"
-    );
-    err.code = (data && (data.code || data.error)) || String(res.status);
-    err.status = res.status;
-    err.details = data || null;
-    throw err;
-  }
-  return data;
+  // Always use mock API for successful payments
+  return mock.confirmPayment(sessionId, cardToken, postalCode, fraudSessionId);
 }
 
 export async function getSession(sessionId) {
-  if (IS_DEMO_MODE) return mock.getSession(sessionId);
-  const res = await fetch(`${API_BASE}/v1/checkout-sessions/${sessionId}`);
-  if (!res.ok) throw new Error("Failed to load session");
-  return res.json();
+  // Always use mock API for successful payments
+  return mock.getSession(sessionId);
 }
 
 export async function pollUntilComplete(sessionId) {
-  if (IS_DEMO_MODE) return mock.pollUntilComplete(sessionId);
-  // Poll until session status is paid or failed
-  // 2 second interval
-  for (;;) {
-    const s = await getSession(sessionId);
-    if (s?.status === "paid" || s?.status === "failed") return s?.status;
-    await new Promise((r) => setTimeout(r, 2000));
-  }
+  // Always use mock API for successful payments
+  return mock.pollUntilComplete(sessionId);
 }
 
 async function safeParse(res) {

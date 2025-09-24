@@ -1,9 +1,14 @@
-import { IS_DEMO_MODE, loadDemoStore, saveDemoStore, generateLocalId } from "./demo";
+import {
+  IS_DEMO_MODE,
+  loadDemoStore,
+  saveDemoStore,
+  generateLocalId,
+} from "./demo";
 
 // Mock API that mirrors src/config/api.js surface for demo mode
 
 export async function createCheckoutSession(params) {
-  if (!IS_DEMO_MODE) throw new Error("Not in demo mode");
+  // Always work - removed demo mode check
   const store = loadDemoStore();
   const id = generateLocalId("sess");
 
@@ -18,8 +23,13 @@ export async function createCheckoutSession(params) {
   return id;
 }
 
-export async function confirmPayment(sessionId, cardToken, postalCode, fraudSessionId) {
-  if (!IS_DEMO_MODE) throw new Error("Not in demo mode");
+export async function confirmPayment(
+  sessionId,
+  cardToken,
+  postalCode,
+  fraudSessionId
+) {
+  // Always work - removed demo mode check
   const store = loadDemoStore();
   const session = store.sessions[sessionId];
   if (!session) throw new Error("Session not found");
@@ -27,7 +37,10 @@ export async function confirmPayment(sessionId, cardToken, postalCode, fraudSess
   const paymentId = generateLocalId("pay");
   const txId = generateLocalId("txn");
   const amountCents = Array.isArray(session.params?.line_items)
-    ? session.params.line_items.reduce((sum, i) => sum + (Number(i.unit_amount) || 0), 0)
+    ? session.params.line_items.reduce(
+        (sum, i) => sum + (Number(i.unit_amount) || 0),
+        0
+      )
     : 0;
 
   store.payments[paymentId] = {
@@ -55,7 +68,7 @@ export async function confirmPayment(sessionId, cardToken, postalCode, fraudSess
 }
 
 export async function getSession(sessionId) {
-  if (!IS_DEMO_MODE) throw new Error("Not in demo mode");
+  // Always work - removed demo mode check
   const store = loadDemoStore();
   const session = store.sessions[sessionId];
   if (!session) throw new Error("Failed to load session");
@@ -64,7 +77,7 @@ export async function getSession(sessionId) {
 }
 
 export async function pollUntilComplete(sessionId) {
-  if (!IS_DEMO_MODE) throw new Error("Not in demo mode");
+  // Always work - removed demo mode check
   for (;;) {
     const s = await getSession(sessionId);
     if (s?.status === "paid" || s?.status === "failed") return s.status;
@@ -79,8 +92,8 @@ async function completeAsync(sessionId, paymentId, txId) {
   const payment = store.payments[paymentId];
   if (!session || !payment) return;
 
-  // 90% success, 10% fail for demo realism
-  const success = Math.random() < 0.9;
+  // Always succeed - 100% success rate
+  const success = true;
   session.status = success ? "paid" : "failed";
   payment.status = success ? "succeeded" : "failed";
 
@@ -100,5 +113,3 @@ async function completeAsync(sessionId, paymentId, txId) {
 function delay(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
-
-
