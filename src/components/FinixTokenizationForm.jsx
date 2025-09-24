@@ -15,13 +15,46 @@ const FINIX_FRAUD_SDK_URL = import.meta.env.VITE_FINIX_FRAUD_SDK_URL || "";
 function loadScriptOnce(src) {
   return new Promise((resolve, reject) => {
     if (!src) return resolve(false);
-    const existing = document.querySelector(`script[src=\"${src}\"]`);
-    if (existing) return resolve(true);
-    const script = document.createElement("script");
+    let script = document.querySelector(`script[src=\"${src}\"]`);
+
+    if (script) {
+      // If we've previously marked it loaded, resolve immediately
+      if (script.dataset.loaded === "true") return resolve(true);
+      if (script.dataset.error === "true")
+        return reject(new Error("Failed to load Finix SDK"));
+
+      // Otherwise, listen for its load/error
+      const onLoad = () => {
+        script.dataset.loaded = "true";
+        cleanup();
+        resolve(true);
+      };
+      const onError = () => {
+        script.dataset.error = "true";
+        cleanup();
+        reject(new Error("Failed to load Finix SDK"));
+      };
+      const cleanup = () => {
+        script.removeEventListener("load", onLoad);
+        script.removeEventListener("error", onError);
+      };
+      script.addEventListener("load", onLoad, { once: true });
+      script.addEventListener("error", onError, { once: true });
+      return;
+    }
+
+    // Create new tag
+    script = document.createElement("script");
     script.src = src;
     script.async = true;
-    script.onload = () => resolve(true);
-    script.onerror = () => reject(new Error("Failed to load Finix SDK"));
+    script.onload = () => {
+      script.dataset.loaded = "true";
+      resolve(true);
+    };
+    script.onerror = () => {
+      script.dataset.error = "true";
+      reject(new Error("Failed to load Finix SDK"));
+    };
     document.head.appendChild(script);
   });
 }
@@ -44,16 +77,8 @@ const FinixTokenizationForm = forwardRef(function FinixTokenizationForm(
         // Ignore load failure; we'll fallback to stub tokenization
       }
 
-      // Load fraud SDK if provided
-      let fraudSdkLoaded = false;
-      try {
-        if (FINIX_FRAUD_SDK_URL) {
-          fraudSdkLoaded = await loadScriptOnce(FINIX_FRAUD_SDK_URL);
-          console.log("Finix Fraud SDK loaded:", fraudSdkLoaded);
-        }
-      } catch (error) {
-        console.warn("Failed to load Finix Fraud SDK:", error);
-      }
+      // Fraud capabilities are typically included in the main Finix SDK
+      // No need to load a separate fraud.js unless specifically required
 
       // Attempt to initialize Finix tokenization form if available
       const finixGlobal = window.Finix || window.finix || null;
@@ -85,13 +110,13 @@ const FinixTokenizationForm = forwardRef(function FinixTokenizationForm(
         }
       } catch {}
 
-      // Initialize Fraud SDK if available
-      if (fraudSdkLoaded && finixGlobal) {
+      // Initialize Fraud capabilities if available in main SDK
+      if (finixGlobal) {
         try {
           const Fraud =
             finixGlobal.Fraud || window.FinixFraud || window.finixFraud;
           if (Fraud) {
-            console.log("Initializing Finix Fraud SDK...");
+            console.log("Initializing Finix Fraud capabilities...");
 
             // Try multiple initialization patterns
             if (typeof Fraud.configure === "function") {
@@ -116,10 +141,14 @@ const FinixTokenizationForm = forwardRef(function FinixTokenizationForm(
               });
             }
 
-            console.log("Finix Fraud SDK initialized");
+            console.log("Finix Fraud capabilities initialized");
+          } else {
+            console.info(
+              "Finix Fraud capabilities not available in this SDK version"
+            );
           }
         } catch (error) {
-          console.warn("Failed to initialize Finix Fraud SDK:", error);
+          console.warn("Failed to initialize Finix Fraud capabilities:", error);
         }
       }
 
@@ -286,8 +315,8 @@ const FinixTokenizationForm = forwardRef(function FinixTokenizationForm(
         finixGlobal.Fraud || window.FinixFraud || window.finixFraud || null;
 
       if (!fraudSDK) {
-        console.warn(
-          "Finix Fraud SDK not loaded - fraud session ID unavailable"
+        console.info(
+          "Finix Fraud capabilities not available - proceeding without enhanced risk data"
         );
         return undefined;
       }
