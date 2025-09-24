@@ -58,12 +58,11 @@ function ConfirmationPage() {
       </div>
 
       <p className="text-gray-600">
-        Your payment has been processed successfully. You should receive a
-        confirmation email shortly.
+        Your payment has been processed successfully.
       </p>
 
       <p className="text-gray-600 text-sm">
-        Questions? Contact support@bogle.com
+        Questions? Contact general@bogle.com
       </p>
 
       <div className="space-y-3">
