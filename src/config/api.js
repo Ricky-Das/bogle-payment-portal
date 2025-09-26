@@ -23,7 +23,7 @@ export async function createCheckoutSession(
     },
     body: JSON.stringify({
       ...params,
-      idempotency_id: idempotencyKey, // Send to backend for any downstream operations
+      idempotency_key: idempotencyKey, // Send to backend for any downstream operations
     }),
   });
 
@@ -59,16 +59,22 @@ export async function verifyAddressAndCard(
     },
     body: JSON.stringify({
       card_token: cardToken,
-      billing_address: {
-        line1: billingAddress.line1,
-        line2: billingAddress.line2 || null,
-        city: billingAddress.city,
-        region: billingAddress.state,
-        postal_code: billingAddress.zipCode,
-        country: "USA",
-      },
+      billing_address: (() => {
+        const addr = {
+          line1: billingAddress.line1,
+          city: billingAddress.city,
+          region: billingAddress.state,
+          postal_code: billingAddress.zipCode,
+          country: "US",
+        };
+        // Only include line2 if it has a non-empty value
+        if (billingAddress.line2 && billingAddress.line2.trim().length > 0) {
+          addr.line2 = billingAddress.line2;
+        }
+        return addr;
+      })(),
       fraud_session_id: fraudSessionId,
-      idempotency_id: idempotencyKey,
+      idempotency_key: idempotencyKey,
     }),
   });
 
@@ -97,33 +103,56 @@ export async function confirmPayment(
 ) {
   const idempotencyKey = customIdempotencyKey || generateIdempotencyKey();
 
+  // Build billing address, omitting line2 if empty/null
+  const billing_address = {
+    line1: billingAddress.line1,
+    city: billingAddress.city,
+    region: billingAddress.state,
+    postal_code: billingAddress.zipCode,
+    country: "US",
+  };
+
+  // Only include line2 if it has a non-empty value
+  if (billingAddress.line2 && billingAddress.line2.trim().length > 0) {
+    billing_address.line2 = billingAddress.line2;
+  }
+
+  const payload = {
+    session_id: sessionId,
+    fraud_session_id: fraudSessionId,
+    idempotency_key: idempotencyKey, // Send to backend for Finix calls
+    payment_method: {
+      type: "card",
+      card_token: cardToken,
+      billing_address,
+    },
+  };
+
+  // Log the exact payload for debugging
+  console.log("🔍 Payment Request Payload:", JSON.stringify(payload, null, 2));
+  console.log("🔍 Payment Request Headers:", {
+    "Content-Type": "application/json",
+    "Idempotency-Key": idempotencyKey,
+  });
+
   const res = await fetch(`${API_BASE}/v1/payments`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       "Idempotency-Key": idempotencyKey,
     },
-    body: JSON.stringify({
-      session_id: sessionId,
-      fraud_session_id: fraudSessionId,
-      idempotency_id: idempotencyKey, // Send to backend for Finix calls
-      payment_method: {
-        type: "card",
-        card_token: cardToken,
-        billing_address: {
-          line1: billingAddress.line1,
-          line2: billingAddress.line2 || null,
-          city: billingAddress.city,
-          region: billingAddress.state,
-          postal_code: billingAddress.zipCode,
-          country: "USA",
-        },
-      },
-    }),
+    body: JSON.stringify(payload),
   });
 
   const data = await safeParse(res);
   if (!res.ok) {
+    console.error("❌ Payment API Error Response:", {
+      status: res.status,
+      statusText: res.statusText,
+      headers: Object.fromEntries(res.headers.entries()),
+      body: data,
+    });
+
     const err = new Error(
       data?.message || data?.error || res.statusText || "payment_failed"
     );

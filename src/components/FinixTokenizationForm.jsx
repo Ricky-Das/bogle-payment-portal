@@ -11,62 +11,111 @@ const DEFAULT_FINIX_SDK_URL =
   import.meta.env.VITE_FINIX_SDK_URL || "https://js.finix.com/v/1/finix.js";
 const FINIX_APPLICATION_ID = import.meta.env.VITE_FINIX_APPLICATION_ID || "";
 const FINIX_ENVIRONMENT = import.meta.env.VITE_FINIX_ENVIRONMENT || "sandbox";
-const FINIX_MERCHANT_ID = import.meta.env.VITE_FINIX_MERCHANT_ID || "";
+const FINIX_MERCHANT_ID =
+  import.meta.env.VITE_FINIX_MERCHANT_ID || "MUxhidZSQ4Je4wi8u1687sMN";
 const FINIX_FRAUD_SDK_URL = import.meta.env.VITE_FINIX_FRAUD_SDK_URL || "";
 const FINIX_FRAUD_ENABLED =
   (import.meta.env.VITE_FINIX_FRAUD_ENABLED ?? "true") !== "false";
+
+const logger = {
+  info: (message, data) =>
+    console.log(`[INFO] ${new Date().toISOString()} - ${message}`, data),
+  warn: (message, data) =>
+    console.warn(`[WARN] ${new Date().toISOString()} - ${message}`, data),
+  error: (message, data) =>
+    console.error(`[ERROR] ${new Date().toISOString()} - ${message}`, data),
+  group: (label) => console.group(label),
+  groupEnd: () => console.groupEnd(),
+};
+
+// Global state to prevent duplicate initialization
+let globalFinixAuth = null;
+let globalFinixInitialized = false;
+let finixInitPromise = null;
 
 async function initializeFinixAuthWithRetry(
   finixGlobal,
   retries = 3,
   delay = 1000
 ) {
-  for (let attempt = 1; attempt <= retries; attempt++) {
-    try {
-      console.log(`Initializing Finix Auth (attempt ${attempt}/${retries})...`);
-
-      const finixAuth = finixGlobal.Auth(
-        FINIX_ENVIRONMENT,
-        FINIX_MERCHANT_ID,
-        (sessionKey) => {
-          try {
-            if (sessionKey) window.FINIX_FRAUD_SESSION_ID = sessionKey;
-          } catch {}
-          console.log(
-            "Finix Auth initialized with session key:",
-            sessionKey ? "present" : "empty"
-          );
-        }
-      );
-
-      // Wait briefly and check if session key is available
-      await new Promise((resolve) => setTimeout(resolve, 500));
-
-      if (typeof finixAuth.getSessionKey === "function") {
-        const sessionKey = finixAuth.getSessionKey();
-        if (sessionKey) {
-          console.log("Finix Auth service initialized successfully");
-          return finixAuth;
-        }
-      }
-
-      // If no session key yet, store auth and continue
-      console.log("Finix Auth initialized, waiting for session key...");
-      return finixAuth;
-    } catch (error) {
-      console.warn(`Finix Auth init attempt ${attempt} failed:`, error);
-      if (attempt === retries) {
-        console.error("All Finix Auth initialization attempts failed");
-        throw error;
-      }
-      await new Promise((resolve) => setTimeout(resolve, delay * attempt));
-    }
+  // Return existing auth if already initialized
+  if (globalFinixAuth) {
+    logger.info("Using existing Finix Auth instance");
+    return globalFinixAuth;
   }
+
+  // If initialization is in progress, wait for it
+  if (finixInitPromise) {
+    logger.info("Waiting for ongoing Finix Auth initialization...");
+    return finixInitPromise;
+  }
+
+  // Start new initialization
+  finixInitPromise = (async () => {
+    for (let attempt = 1; attempt <= retries; attempt++) {
+      try {
+        logger.info(
+          `Initializing Finix Auth (attempt ${attempt}/${retries})...`
+        );
+
+        const finixAuth = finixGlobal.Auth(
+          FINIX_ENVIRONMENT,
+          FINIX_MERCHANT_ID,
+          (sessionKey) => {
+            try {
+              if (sessionKey) window.FINIX_FRAUD_SESSION_ID = sessionKey;
+            } catch {}
+            logger.info("Finix Auth initialized with session key:", {
+              sessionKey: sessionKey ? "present" : "empty",
+            });
+          }
+        );
+
+        // Wait briefly and check if session key is available
+        await new Promise((resolve) => setTimeout(resolve, 500));
+
+        if (typeof finixAuth.getSessionKey === "function") {
+          const sessionKey = finixAuth.getSessionKey();
+          if (sessionKey) {
+            logger.info("Finix Auth service initialized successfully", {
+              sessionKey,
+            });
+            globalFinixAuth = finixAuth;
+            globalFinixInitialized = true;
+            return finixAuth;
+          }
+        }
+
+        // If no session key yet, store auth and continue
+        logger.info("Finix Auth initialized, waiting for session key...");
+        globalFinixAuth = finixAuth;
+        globalFinixInitialized = true;
+        return finixAuth;
+      } catch (error) {
+        logger.warn(`Finix Auth init attempt ${attempt} failed:`, error);
+        if (attempt === retries) {
+          logger.error("All Finix Auth initialization attempts failed");
+          finixInitPromise = null;
+          throw error;
+        }
+        await new Promise((resolve) => setTimeout(resolve, delay * attempt));
+      }
+    }
+  })();
+
+  return finixInitPromise;
 }
 
 function loadScriptOnce(src) {
   return new Promise((resolve, reject) => {
     if (!src) return resolve(false);
+
+    // Check if Finix is already available globally (loaded via index.html)
+    if (window.Finix || window.finix) {
+      logger.info("Finix SDK already available globally");
+      return resolve(true);
+    }
+
     let script = document.querySelector(`script[src="${src}"]`);
 
     if (script) {
@@ -100,7 +149,8 @@ function loadScriptOnce(src) {
       return;
     }
 
-    // Create new tag
+    // Only create new script if not already loaded
+    logger.info("Loading Finix SDK dynamically...", { src });
     script = document.createElement("script");
     script.src = src;
     script.async = true;
@@ -128,45 +178,65 @@ const FinixTokenizationForm = forwardRef(function FinixTokenizationForm(
   const initStartedRef = useRef(false);
 
   useEffect(() => {
+    logger.group("FinixTokenizationForm Initialization");
+    logger.info("Component mounted, starting initialization...");
+    logger.info("Configuration:", {
+      DEFAULT_FINIX_SDK_URL,
+      FINIX_APPLICATION_ID,
+      FINIX_ENVIRONMENT,
+      FINIX_MERCHANT_ID,
+      FINIX_FRAUD_ENABLED,
+    });
     // Prevent double initialization in React StrictMode / HMR
-    if (initStartedRef.current) return;
+    if (initStartedRef.current) {
+      logger.warn("Initialization already started, skipping.");
+      logger.groupEnd();
+      return;
+    }
     initStartedRef.current = true;
 
     let cancelled = false;
     async function init() {
       try {
         await loadScriptOnce(sdkUrl);
-      } catch {
+        logger.info("Finix SDK loaded successfully.");
+      } catch (err) {
+        logger.error("Failed to load Finix SDK. Fallback to stub.", err);
         // Ignore load failure; we'll fallback to stub tokenization
       }
 
       // Fraud capabilities are typically included in the main Finix SDK
       // No need to load a separate fraud.js unless specifically required
 
-      // Initialize Finix Auth service for fraud detection
+      // Initialize Finix Auth service for fraud detection (only once globally)
       const finixGlobal = window.Finix || window.finix || null;
       if (
         FINIX_FRAUD_ENABLED &&
         finixGlobal &&
         finixGlobal.Auth &&
-        FINIX_MERCHANT_ID
+        FINIX_MERCHANT_ID &&
+        !globalFinixInitialized
       ) {
         try {
           const finixAuth = await initializeFinixAuthWithRetry(finixGlobal);
           finixAuthRef.current = finixAuth;
         } catch (error) {
-          console.warn(
+          logger.error(
             "Failed to initialize Finix Auth service after retries:",
             error
           );
         }
+      } else if (globalFinixAuth) {
+        // Use existing global auth instance
+        finixAuthRef.current = globalFinixAuth;
+        logger.info("Using existing global Finix Auth instance");
       } else {
         if (!FINIX_FRAUD_ENABLED) {
-          console.info(
+          logger.info(
             "Finix fraud disabled via VITE_FINIX_FRAUD_ENABLED=false"
           );
         } else {
-          console.info(
+          logger.warn(
             "Finix Auth not available or merchant ID not configured - fraud detection disabled"
           );
         }
@@ -175,12 +245,13 @@ const FinixTokenizationForm = forwardRef(function FinixTokenizationForm(
       // Canonical API per docs: CardTokenForm("container-id", options)
       if (finixGlobal && typeof finixGlobal.CardTokenForm === "function") {
         try {
-          console.log("Attempting to create CardTokenForm with:", {
+          const options = {
             containerId: formContainerId,
             applicationId: FINIX_APPLICATION_ID,
             environment: FINIX_ENVIRONMENT,
             merchantId: FINIX_MERCHANT_ID,
-          });
+          };
+          logger.info("Attempting to create CardTokenForm with:", options);
 
           // Per docs: constructor is CardTokenForm(elementId, options) - NO new keyword
           const instance = finixGlobal.CardTokenForm(formContainerId, {
@@ -189,7 +260,7 @@ const FinixTokenizationForm = forwardRef(function FinixTokenizationForm(
             showAddress: false, // We collect ZIP separately for AVS
           });
 
-          console.log("CardTokenForm created successfully:", instance);
+          logger.info("CardTokenForm created successfully:", instance);
 
           // Expose for debugging
           window.finixCardForm = instance;
@@ -200,22 +271,27 @@ const FinixTokenizationForm = forwardRef(function FinixTokenizationForm(
               const env = FINIX_ENVIRONMENT;
               const appId = FINIX_APPLICATION_ID;
               if (typeof instance.submit !== "function") {
-                throw new Error("Finix CardTokenForm not available");
+                const err = new Error("Finix CardTokenForm not available");
+                logger.error(err.message, { instance });
+                throw err;
               }
               // Per Finix docs: submit(environment, applicationId, callback)
               const res = await new Promise((resolve, reject) => {
+                logger.info("Calling Finix submit...", { env, appId });
                 instance.submit(env, appId, (err, data) => {
                   if (err) {
-                    console.error("Finix tokenization error:", err);
+                    logger.error("Finix tokenization error:", err);
                     return reject(
                       new Error(`Tokenization failed: ${err.message || err}`)
                     );
                   }
                   if (!data || !data.data || !data.data.id) {
+                    logger.error("Invalid token response from Finix", { data });
                     return reject(
                       new Error("Invalid token response from Finix")
                     );
                   }
+                  logger.info("Finix tokenization successful", { data });
                   resolve(data);
                 });
               });
@@ -228,7 +304,7 @@ const FinixTokenizationForm = forwardRef(function FinixTokenizationForm(
           }
           return;
         } catch (error) {
-          console.error("Failed to create CardTokenForm:", error);
+          logger.error("Failed to create CardTokenForm:", error);
         }
       }
       // If no CardTokenForm, mark ready but tokenization won't work
@@ -236,6 +312,7 @@ const FinixTokenizationForm = forwardRef(function FinixTokenizationForm(
         setIsReady(true);
         if (typeof onReady === "function") onReady(true);
       }
+      logger.groupEnd();
     }
     init();
     return () => {
@@ -243,6 +320,7 @@ const FinixTokenizationForm = forwardRef(function FinixTokenizationForm(
       finixInstanceRef.current = null;
       finixAuthRef.current = null;
       initStartedRef.current = false;
+      logger.groupEnd();
     };
   }, [sdkUrl]);
 
@@ -344,6 +422,10 @@ const FinixTokenizationForm = forwardRef(function FinixTokenizationForm(
     async getFraudSessionId(timeout = 5000) {
       // Use the properly initialized Finix Auth service
       const finixAuth = finixAuthRef.current;
+      logger.info("Attempting to get fraud session ID...", {
+        hasFinixAuth: !!finixAuth,
+        globalSessionId: window.FINIX_FRAUD_SESSION_ID,
+      });
 
       // Fallback if session key was set globally by callback
       if (window.FINIX_FRAUD_SESSION_ID) {
@@ -351,7 +433,7 @@ const FinixTokenizationForm = forwardRef(function FinixTokenizationForm(
       }
 
       if (!finixAuth) {
-        console.info(
+        logger.warn(
           "Finix Auth not initialized - proceeding without fraud session ID"
         );
         return undefined;
@@ -365,7 +447,9 @@ const FinixTokenizationForm = forwardRef(function FinixTokenizationForm(
           if (typeof finixAuth.getSessionKey === "function") {
             const sessionKey = finixAuth.getSessionKey();
             if (sessionKey) {
-              console.log("Fraud session key obtained:", "present");
+              logger.info("Fraud session key obtained via getSessionKey()", {
+                sessionKey,
+              });
               return sessionKey;
             }
           }
@@ -374,7 +458,9 @@ const FinixTokenizationForm = forwardRef(function FinixTokenizationForm(
           if (typeof finixAuth.getSessionId === "function") {
             const sessionId = finixAuth.getSessionId();
             if (sessionId) {
-              console.log("Fraud session ID obtained:", "present");
+              logger.info("Fraud session ID obtained via getSessionId()", {
+                sessionId,
+              });
               return sessionId;
             }
           }
@@ -382,12 +468,12 @@ const FinixTokenizationForm = forwardRef(function FinixTokenizationForm(
           // Wait before retrying
           await new Promise((resolve) => setTimeout(resolve, 200));
         } catch (error) {
-          console.warn("Error getting fraud session key:", error);
+          logger.error("Error getting fraud session key:", error);
           break;
         }
       }
 
-      console.warn("Fraud session ID not available after timeout");
+      logger.warn("Fraud session ID not available after timeout");
       return undefined;
     },
     isReady: () => isReady,
@@ -458,17 +544,29 @@ function normalizeToken(res) {
 
     // Validate TK token format (Finix uses "TK" prefix, not always "TK_")
     if (!token || (!token.startsWith("TK_") && !token.startsWith("TK"))) {
-      throw new Error(`Invalid token format: expected TK prefix, got ${token}`);
+      const err = new Error(
+        `Invalid token format: expected TK prefix, got ${token}`
+      );
+      logger.error(err.message, { response: res });
+      throw err;
     }
 
-    return {
+    const normalized = {
       id: token,
       brand: tokenData.brand || tokenData.brand_name || "UNKNOWN",
       last_four:
         tokenData.last_four || tokenData.lastFour || tokenData.last4 || "0000",
     };
+    logger.info("Token normalized successfully", {
+      original: res,
+      normalized,
+    });
+    return normalized;
   } catch (error) {
-    console.error("Token normalization error:", error);
+    logger.error("Token normalization error:", {
+      originalResponse: res,
+      error,
+    });
     throw new Error(`Token processing failed: ${error.message}`);
   }
 }

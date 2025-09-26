@@ -115,19 +115,35 @@ const CreditCardForm = ({ onSuccess, onError, amount = 52.82 }) => {
     e.preventDefault();
 
     // Client validation for billing address (card fields validated by Finix Hosted Fields)
-    if (
-      !formData.billingAddress.zipCode ||
-      formData.billingAddress.zipCode.trim().length < 5
-    ) {
-      setError("Please enter a valid ZIP code for address verification");
-      setIsProcessing(false);
-      return;
+    const requiredFields = [
+      { field: "line1", label: "Address line 1" },
+      { field: "city", label: "City" },
+      { field: "state", label: "State" },
+      { field: "zipCode", label: "ZIP code" },
+    ];
+
+    for (const { field, label } of requiredFields) {
+      if (
+        !formData.billingAddress[field] ||
+        formData.billingAddress[field].trim().length === 0
+      ) {
+        setError(`Please enter a valid ${label}`);
+        setIsProcessing(false);
+        return;
+      }
     }
 
     // Validate ZIP format
     const zipPattern = /^\d{5}(-\d{4})?$/;
     if (!zipPattern.test(formData.billingAddress.zipCode.trim())) {
       setError("Please enter a valid ZIP code (12345 or 12345-6789)");
+      setIsProcessing(false);
+      return;
+    }
+
+    // Validate state format (2 characters)
+    if (formData.billingAddress.state.trim().length !== 2) {
+      setError("Please enter a valid 2-letter state code (e.g., CA, NY)");
       setIsProcessing(false);
       return;
     }

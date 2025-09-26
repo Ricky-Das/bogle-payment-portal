@@ -43,7 +43,7 @@ VITE_API_BASE=https://tstd5z72k1.execute-api.us-east-1.amazonaws.com
 
 # Finix tokenization and fraud detection
 VITE_FINIX_APPLICATION_ID=APchtKYW94eNhmDAQtRqpNZy
-VITE_FINIX_MERCHANT_ID=MUeDVrf2ahuKc9Eg5TeZugvs
+VITE_FINIX_MERCHANT_ID=MUxhidZSQ4Je4wi8u1687sMN
 VITE_FINIX_ENVIRONMENT=sandbox
 VITE_FINIX_SDK_URL=https://js.finixpayments.com/v1/finix.js
 
@@ -59,7 +59,7 @@ Diagnostics:
 **Required environment variables:**
 
 - `VITE_FINIX_APPLICATION_ID`: Your Finix Application ID for tokenization
-- `VITE_FINIX_MERCHANT_ID`: Your Finix Merchant ID for fraud detection and address verification
+- `VITE_FINIX_MERCHANT_ID`: Your Finix ID for fraud detection and address verification
 - `VITE_FINIX_ENVIRONMENT`: Either "sandbox" or "live"
 - `VITE_FINIX_SDK_URL`: URL to the Finix JavaScript SDK (usually https://js.finix.com/v/1/finix.js)
 
