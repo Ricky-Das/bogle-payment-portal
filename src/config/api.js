@@ -9,8 +9,11 @@ export const generateIdempotencyKey = () =>
     ? crypto.randomUUID()
     : `uuid_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 
-export async function createCheckoutSession(params) {
-  const idempotencyKey = generateIdempotencyKey();
+export async function createCheckoutSession(
+  params,
+  customIdempotencyKey = null
+) {
+  const idempotencyKey = customIdempotencyKey || generateIdempotencyKey();
 
   const res = await fetch(`${API_BASE}/v1/checkout-sessions`, {
     method: "POST",
@@ -18,7 +21,10 @@ export async function createCheckoutSession(params) {
       "Content-Type": "application/json",
       "Idempotency-Key": idempotencyKey,
     },
-    body: JSON.stringify(params),
+    body: JSON.stringify({
+      ...params,
+      idempotency_id: idempotencyKey, // Send to backend for any downstream operations
+    }),
   });
 
   const data = await safeParse(res);
@@ -37,13 +43,59 @@ export async function createCheckoutSession(params) {
   return data?.id;
 }
 
+export async function verifyAddressAndCard(
+  cardToken,
+  billingAddress,
+  fraudSessionId,
+  customIdempotencyKey = null
+) {
+  const idempotencyKey = customIdempotencyKey || generateIdempotencyKey();
+
+  const res = await fetch(`${API_BASE}/v1/address-verification`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Idempotency-Key": idempotencyKey,
+    },
+    body: JSON.stringify({
+      card_token: cardToken,
+      billing_address: {
+        line1: billingAddress.line1,
+        line2: billingAddress.line2 || null,
+        city: billingAddress.city,
+        region: billingAddress.state,
+        postal_code: billingAddress.zipCode,
+        country: "USA",
+      },
+      fraud_session_id: fraudSessionId,
+      idempotency_id: idempotencyKey,
+    }),
+  });
+
+  const data = await safeParse(res);
+  if (!res.ok) {
+    const err = new Error(
+      data?.message ||
+        data?.error ||
+        res.statusText ||
+        "address_verification_failed"
+    );
+    err.code = (data && (data.code || data.error)) || String(res.status);
+    err.status = res.status;
+    err.details = data || null;
+    throw err;
+  }
+  return data;
+}
+
 export async function confirmPayment(
   sessionId,
   cardToken,
-  postalCode,
-  fraudSessionId
+  billingAddress,
+  fraudSessionId,
+  customIdempotencyKey = null
 ) {
-  const idempotencyKey = generateIdempotencyKey();
+  const idempotencyKey = customIdempotencyKey || generateIdempotencyKey();
 
   const res = await fetch(`${API_BASE}/v1/payments`, {
     method: "POST",
@@ -54,10 +106,18 @@ export async function confirmPayment(
     body: JSON.stringify({
       session_id: sessionId,
       fraud_session_id: fraudSessionId,
+      idempotency_id: idempotencyKey, // Send to backend for Finix calls
       payment_method: {
         type: "card",
         card_token: cardToken,
-        billing_postal_code: postalCode,
+        billing_address: {
+          line1: billingAddress.line1,
+          line2: billingAddress.line2 || null,
+          city: billingAddress.city,
+          region: billingAddress.state,
+          postal_code: billingAddress.zipCode,
+          country: "USA",
+        },
       },
     }),
   });

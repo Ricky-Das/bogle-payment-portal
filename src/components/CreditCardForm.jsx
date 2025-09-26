@@ -30,6 +30,7 @@ const CreditCardForm = ({ onSuccess, onError, amount = 52.82 }) => {
   });
 
   const [isProcessing, setIsProcessing] = useState(false);
+  const [processingStep, setProcessingStep] = useState("");
   const [finixConfig, setFinixConfig] = useState(null);
   const tokenizationRef = useRef(null);
   const [finixReady, setFinixReady] = useState(false);
@@ -132,18 +133,17 @@ const CreditCardForm = ({ onSuccess, onError, amount = 52.82 }) => {
     }
 
     setIsProcessing(true);
+    setProcessingStep("Initializing payment...");
 
     try {
       // Ensure tokenization is configured
-      if (
-        !import.meta.env.VITE_FINIX_SDK_URL ||
-        !import.meta.env.VITE_FINIX_APPLICATION_ID
-      ) {
+      if (!import.meta.env.VITE_FINIX_APPLICATION_ID) {
         throw new Error(
           "Payment temporarily unavailable: Finix is not configured"
         );
       }
       // 1) Create checkout session
+      setProcessingStep("Creating payment session...");
       const sessionId = await createCheckoutSession({
         line_items: [
           {
@@ -162,6 +162,7 @@ const CreditCardForm = ({ onSuccess, onError, amount = 52.82 }) => {
       });
 
       // 2) Tokenize card with Finix on client
+      setProcessingStep("Securing card information...");
       const cardToken = await tokenizeCard();
 
       if (!cardToken || !cardToken.id) {
@@ -183,15 +184,17 @@ const CreditCardForm = ({ onSuccess, onError, amount = 52.82 }) => {
         console.log("Fraud session collected for enhanced risk assessment");
       }
 
-      // 4) Confirm payment with AVS ZIP validation
+      // 4) Confirm payment with full billing address (backend performs AVS $0 auth)
+      setProcessingStep("Processing payment...");
       const payment = await confirmPayment(
         sessionId,
         cardToken.id,
-        formData.billingAddress.zipCode.trim(), // Clean ZIP for AVS
+        formData.billingAddress,
         fraudSessionId
       );
 
       // 5) Poll status until complete
+      setProcessingStep("Finalizing transaction...");
       const finalStatus = await pollUntilComplete(sessionId);
 
       if (finalStatus === "paid") {
@@ -212,47 +215,67 @@ const CreditCardForm = ({ onSuccess, onError, amount = 52.82 }) => {
     } catch (error) {
       let friendly = "Payment failed. Please try again.";
       const code = error && (error.code || error.status || "");
-      switch (String(code).toLowerCase()) {
-        case "processor_error":
-        case "502":
-          friendly =
-            "The processor returned an error. Please use a different card or try again later.";
-          break;
-        case "card_declined":
-          friendly =
-            "Your card was declined. Try another card or contact your bank.";
-          break;
-        case "invalid_request":
-        case "400":
-          friendly =
-            "Invalid payment request. Please recheck the details and try again.";
-          break;
-        case "unauthorized":
-        case "401":
-          friendly = "Authorization failed. Please refresh and try again.";
-          break;
-        case "forbidden":
-        case "403":
-          friendly =
-            "This action is not allowed. Contact support if this persists.";
-          break;
-        case "not_found":
-        case "404":
-          friendly =
-            "Payment session not found. Please refresh and start again.";
-          break;
-        case "timeout":
-        case "504":
-          friendly = "The payment timed out. Please try again.";
-          break;
-        default:
-          if (error?.details?.message) friendly = error.details.message;
+      const errorMessage = error?.message || "";
+
+      // Handle specific AVS and fraud errors
+      if (errorMessage.includes("Address verification failed")) {
+        friendly = errorMessage;
+      } else if (code === "FRAUD_DETECTED" || errorMessage.includes("fraud")) {
+        friendly =
+          "This transaction was declined for suspected fraud. Please try using a different payment method or contact your bank.";
+      } else if (code === "address_verification_failed") {
+        friendly =
+          "Address verification failed. Please verify your billing address matches your card exactly.";
+      } else {
+        // Handle other common error codes
+        switch (String(code).toLowerCase()) {
+          case "processor_error":
+          case "502":
+            friendly =
+              "The processor returned an error. Please use a different card or try again later.";
+            break;
+          case "card_declined":
+          case "declined":
+            friendly =
+              "Your card was declined. Try another card or contact your bank.";
+            break;
+          case "invalid_request":
+          case "400":
+            friendly =
+              "Invalid payment request. Please recheck the details and try again.";
+            break;
+          case "unauthorized":
+          case "401":
+            friendly = "Authorization failed. Please refresh and try again.";
+            break;
+          case "forbidden":
+          case "403":
+            friendly =
+              "This action is not allowed. Contact support if this persists.";
+            break;
+          case "not_found":
+          case "404":
+            friendly =
+              "Payment session not found. Please refresh and start again.";
+            break;
+          case "timeout":
+          case "504":
+            friendly = "The payment timed out. Please try again.";
+            break;
+          default:
+            if (error?.details?.message) friendly = error.details.message;
+            else if (errorMessage && !errorMessage.includes("payment_failed")) {
+              friendly = errorMessage;
+            }
+        }
       }
+
       console.error("Credit card payment error:", error);
       setError(friendly);
       onError(friendly);
     } finally {
       setIsProcessing(false);
+      setProcessingStep("");
     }
   };
 
@@ -373,7 +396,7 @@ const CreditCardForm = ({ onSuccess, onError, amount = 52.82 }) => {
           }`}
         >
           {isProcessing
-            ? "Processing Payment..."
+            ? processingStep || "Processing Payment..."
             : !finixReady
             ? "Loading Payment Form..."
             : `Pay $${amount.toFixed(2)}`}

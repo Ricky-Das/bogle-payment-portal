@@ -41,8 +41,9 @@ Create `.env.local` in the project root:
 # Bogle API base (AWS API Gateway stage base URL)
 VITE_API_BASE=https://tstd5z72k1.execute-api.us-east-1.amazonaws.com
 
-# Finix tokenization
+# Finix tokenization and fraud detection
 VITE_FINIX_APPLICATION_ID=APchtKYW94eNhmDAQtRqpNZy
+VITE_FINIX_MERCHANT_ID=MUeDVrf2ahuKc9Eg5TeZugvs
 VITE_FINIX_ENVIRONMENT=sandbox
 VITE_FINIX_SDK_URL=https://js.finixpayments.com/v1/finix.js
 
@@ -53,7 +54,14 @@ VITE_FINIX_SDK_URL=https://js.finixpayments.com/v1/finix.js
 Diagnostics:
 
 - In development, a banner shows if required variables are missing.
-- To reduce console noise, unset `VITE_FINIX_FRAUD_SDK_URL` if you don’t have a separate fraud script.
+- To reduce console noise, unset `VITE_FINIX_FRAUD_SDK_URL` if you don't have a separate fraud script.
+
+**Required environment variables:**
+
+- `VITE_FINIX_APPLICATION_ID`: Your Finix Application ID for tokenization
+- `VITE_FINIX_MERCHANT_ID`: Your Finix Merchant ID for fraud detection and address verification
+- `VITE_FINIX_ENVIRONMENT`: Either "sandbox" or "live"
+- `VITE_FINIX_SDK_URL`: URL to the Finix JavaScript SDK (usually https://js.finix.com/v/1/finix.js)
 
 ## Running locally
 
@@ -91,14 +99,22 @@ const cardToken = await tokenizationRef.current.tokenize();
 // cardToken.id is the TK token required by the backend
 ```
 
-3. Confirm payment
+3. Verify address and confirm payment
 
 ```js
+// Optional: Address verification (performed automatically in payment flow)
+const avsResult = await verifyAddressAndCard(
+  cardToken.id,
+  billingAddress,
+  fraudSessionId
+);
+
+// Confirm payment
 const payment = await confirmPayment(
   sessionId,
   cardToken.id,
-  billingZip, // for AVS
-  fraudSessionId // optional if fraud capabilities exist
+  billingAddress, // full billing address for AVS
+  fraudSessionId // fraud session ID from Finix Auth
 );
 ```
 

@@ -7,19 +7,28 @@ import React, {
 } from "react";
 // Finix uses applicationId + environment (no client publishable key)
 
-const DEFAULT_FINIX_SDK_URL = import.meta.env.VITE_FINIX_SDK_URL || "";
+const DEFAULT_FINIX_SDK_URL =
+  import.meta.env.VITE_FINIX_SDK_URL || "https://js.finix.com/v/1/finix.js";
 const FINIX_APPLICATION_ID = import.meta.env.VITE_FINIX_APPLICATION_ID || "";
 const FINIX_ENVIRONMENT = import.meta.env.VITE_FINIX_ENVIRONMENT || "sandbox";
+const FINIX_MERCHANT_ID = import.meta.env.VITE_FINIX_MERCHANT_ID || "";
 const FINIX_FRAUD_SDK_URL = import.meta.env.VITE_FINIX_FRAUD_SDK_URL || "";
+const FINIX_FRAUD_ENABLED =
+  (import.meta.env.VITE_FINIX_FRAUD_ENABLED ?? "true") !== "false";
 
 function loadScriptOnce(src) {
   return new Promise((resolve, reject) => {
     if (!src) return resolve(false);
-    let script = document.querySelector(`script[src=\"${src}\"]`);
+    let script = document.querySelector(`script[src="${src}"]`);
 
     if (script) {
       // If we've previously marked it loaded, resolve immediately
       if (script.dataset.loaded === "true") return resolve(true);
+      // If global is already available, consider it loaded
+      if (window.Finix || window.finix) {
+        script.dataset.loaded = "true";
+        return resolve(true);
+      }
       if (script.dataset.error === "true")
         return reject(new Error("Failed to load Finix SDK"));
 
@@ -67,6 +76,7 @@ const FinixTokenizationForm = forwardRef(function FinixTokenizationForm(
   const formContainerId = "finix-card-form";
   const [isReady, setIsReady] = useState(false);
   const finixInstanceRef = useRef(null);
+  const finixAuthRef = useRef(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -80,87 +90,67 @@ const FinixTokenizationForm = forwardRef(function FinixTokenizationForm(
       // Fraud capabilities are typically included in the main Finix SDK
       // No need to load a separate fraud.js unless specifically required
 
-      // Attempt to initialize Finix tokenization form if available
+      // Initialize Finix Auth service for fraud detection
       const finixGlobal = window.Finix || window.finix || null;
-      // Configure Auth first if available (some SDKs require this)
-      try {
-        const Auth = finixGlobal && finixGlobal.Auth;
-        if (Auth) {
-          if (typeof Auth.configure === "function") {
-            Auth.configure({
-              applicationId: FINIX_APPLICATION_ID,
-              environment: FINIX_ENVIRONMENT,
-            });
-          } else if (typeof Auth.init === "function") {
-            Auth.init({
-              applicationId: FINIX_APPLICATION_ID,
-              environment: FINIX_ENVIRONMENT,
-            });
-          } else if (typeof Auth.setup === "function") {
-            Auth.setup({
-              applicationId: FINIX_APPLICATION_ID,
-              environment: FINIX_ENVIRONMENT,
-            });
-          } else if (typeof Auth === "function") {
-            Auth({
-              applicationId: FINIX_APPLICATION_ID,
-              environment: FINIX_ENVIRONMENT,
-            });
-          }
-        }
-      } catch {}
-
-      // Initialize Fraud capabilities if available in main SDK
-      if (finixGlobal) {
+      if (
+        FINIX_FRAUD_ENABLED &&
+        finixGlobal &&
+        finixGlobal.Auth &&
+        FINIX_MERCHANT_ID
+      ) {
         try {
-          const Fraud =
-            finixGlobal.Fraud || window.FinixFraud || window.finixFraud;
-          if (Fraud) {
-            console.log("Initializing Finix Fraud capabilities...");
+          console.log("Initializing Finix Auth service for fraud detection...");
 
-            // Try multiple initialization patterns
-            if (typeof Fraud.configure === "function") {
-              Fraud.configure({
-                applicationId: FINIX_APPLICATION_ID,
-                environment: FINIX_ENVIRONMENT,
-              });
-            } else if (typeof Fraud.init === "function") {
-              Fraud.init({
-                applicationId: FINIX_APPLICATION_ID,
-                environment: FINIX_ENVIRONMENT,
-              });
-            } else if (typeof Fraud.setup === "function") {
-              Fraud.setup({
-                applicationId: FINIX_APPLICATION_ID,
-                environment: FINIX_ENVIRONMENT,
-              });
-            } else if (typeof Fraud === "function") {
-              Fraud({
-                applicationId: FINIX_APPLICATION_ID,
-                environment: FINIX_ENVIRONMENT,
-              });
+          // Initialize Auth service with merchant ID and callback
+          const finixAuth = finixGlobal.Auth(
+            FINIX_ENVIRONMENT,
+            FINIX_MERCHANT_ID,
+            (sessionKey) => {
+              try {
+                if (sessionKey) window.FINIX_FRAUD_SESSION_ID = sessionKey;
+              } catch {}
+              console.log(
+                "Finix Auth initialized with session key:",
+                sessionKey ? "present" : "empty"
+              );
             }
+          );
 
-            console.log("Finix Fraud capabilities initialized");
-          } else {
-            console.info(
-              "Finix Fraud capabilities not available in this SDK version"
-            );
-          }
+          finixAuthRef.current = finixAuth;
+          console.log("Finix Auth service initialized successfully");
         } catch (error) {
-          console.warn("Failed to initialize Finix Fraud capabilities:", error);
+          console.warn("Failed to initialize Finix Auth service:", error);
+        }
+      } else {
+        if (!FINIX_FRAUD_ENABLED) {
+          console.info(
+            "Finix fraud disabled via VITE_FINIX_FRAUD_ENABLED=false"
+          );
+        } else {
+          console.info(
+            "Finix Auth not available or merchant ID not configured - fraud detection disabled"
+          );
         }
       }
 
       // Canonical API per docs: CardTokenForm("container-id", options)
       if (finixGlobal && typeof finixGlobal.CardTokenForm === "function") {
         try {
+          console.log("Attempting to create CardTokenForm with:", {
+            containerId: formContainerId,
+            applicationId: FINIX_APPLICATION_ID,
+            environment: FINIX_ENVIRONMENT,
+            merchantId: FINIX_MERCHANT_ID,
+          });
+
           // Per docs: constructor is CardTokenForm(elementId, options) - NO new keyword
           const instance = finixGlobal.CardTokenForm(formContainerId, {
             showLabels: true,
             showPlaceholders: true,
             showAddress: false, // We collect ZIP separately for AVS
           });
+
+          console.log("CardTokenForm created successfully:", instance);
 
           // Expose for debugging
           window.finixCardForm = instance;
@@ -198,7 +188,9 @@ const FinixTokenizationForm = forwardRef(function FinixTokenizationForm(
             if (typeof onReady === "function") onReady(true);
           }
           return;
-        } catch {}
+        } catch (error) {
+          console.error("Failed to create CardTokenForm:", error);
+        }
       }
       // If no CardTokenForm, mark ready but tokenization won't work
       if (!cancelled) {
@@ -210,6 +202,7 @@ const FinixTokenizationForm = forwardRef(function FinixTokenizationForm(
     return () => {
       cancelled = true;
       finixInstanceRef.current = null;
+      finixAuthRef.current = null;
     };
   }, [sdkUrl]);
 
@@ -309,23 +302,35 @@ const FinixTokenizationForm = forwardRef(function FinixTokenizationForm(
       });
     },
     getFraudSessionId() {
-      // Check multiple possible fraud SDK namespaces in priority order
-      const finixGlobal = window.Finix || window.finix || {};
-      const fraudSDK =
-        finixGlobal.Fraud || window.FinixFraud || window.finixFraud || null;
+      // Use the properly initialized Finix Auth service
+      const finixAuth = finixAuthRef.current;
 
-      if (!fraudSDK) {
+      // Fallback if session key was set globally by callback
+      if (window.FINIX_FRAUD_SESSION_ID) {
+        return window.FINIX_FRAUD_SESSION_ID;
+      }
+
+      if (!finixAuth) {
         console.info(
-          "Finix Fraud capabilities not available - proceeding without enhanced risk data"
+          "Finix Auth not initialized - proceeding without fraud session ID"
         );
         return undefined;
       }
 
-      // Try different methods the fraud SDK might expose
       try {
-        // Most common pattern: getSessionId()
-        if (typeof fraudSDK.getSessionId === "function") {
-          const sessionId = fraudSDK.getSessionId();
+        // Standard Finix Auth method: getSessionKey()
+        if (typeof finixAuth.getSessionKey === "function") {
+          const sessionKey = finixAuth.getSessionKey();
+          console.log(
+            "Fraud session key obtained:",
+            sessionKey ? "present" : "empty"
+          );
+          return sessionKey;
+        }
+
+        // Alternative method names
+        if (typeof finixAuth.getSessionId === "function") {
+          const sessionId = finixAuth.getSessionId();
           console.log(
             "Fraud session ID obtained:",
             sessionId ? "present" : "empty"
@@ -333,43 +338,10 @@ const FinixTokenizationForm = forwardRef(function FinixTokenizationForm(
           return sessionId;
         }
 
-        // Alternative: sessionId as function
-        if (typeof fraudSDK.sessionId === "function") {
-          const sessionId = fraudSDK.sessionId();
-          console.log(
-            "Fraud session ID (via sessionId()):",
-            sessionId ? "present" : "empty"
-          );
-          return sessionId;
-        }
-
-        // Alternative: getSession() returning object
-        if (typeof fraudSDK.getSession === "function") {
-          const session = fraudSDK.getSession();
-          const sessionId = session?.id || session?.sessionId;
-          console.log(
-            "Fraud session ID (via getSession()):",
-            sessionId ? "present" : "empty"
-          );
-          return sessionId;
-        }
-
-        // Static property
-        if (fraudSDK.sessionId && typeof fraudSDK.sessionId === "string") {
-          console.log("Fraud session ID (static property):", "present");
-          return fraudSDK.sessionId;
-        }
-
-        // Check if the fraud SDK itself has an id property
-        if (fraudSDK.id && typeof fraudSDK.id === "string") {
-          console.log("Fraud session ID (direct id property):", "present");
-          return fraudSDK.id;
-        }
-
-        console.warn("Fraud SDK loaded but no session ID method found");
-        console.log("Available fraud SDK methods:", Object.keys(fraudSDK));
+        console.warn("Finix Auth loaded but no session key method found");
+        console.log("Available Auth methods:", Object.keys(finixAuth));
       } catch (error) {
-        console.warn("Error getting fraud session ID:", error);
+        console.warn("Error getting fraud session key:", error);
       }
 
       return undefined;
@@ -385,10 +357,13 @@ const FinixTokenizationForm = forwardRef(function FinixTokenizationForm(
           className="w-full border rounded-md bg-white p-3 min-h-[44px]"
         />
       </div>
-      {(!DEFAULT_FINIX_SDK_URL || !FINIX_APPLICATION_ID) && (
+      {(!DEFAULT_FINIX_SDK_URL ||
+        !FINIX_APPLICATION_ID ||
+        !FINIX_MERCHANT_ID) && (
         <p className="mt-2 text-xs text-gray-500">
-          Finix tokenization is not fully configured. Define VITE_FINIX_SDK_URL
-          and VITE_FINIX_APPLICATION_ID to enable tokenization.
+          Finix tokenization is not fully configured. Define VITE_FINIX_SDK_URL,
+          VITE_FINIX_APPLICATION_ID, and VITE_FINIX_MERCHANT_ID to enable
+          tokenization and fraud detection.
         </p>
       )}
     </div>
