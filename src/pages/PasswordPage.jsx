@@ -14,8 +14,8 @@ function PasswordPage() {
     navigate("/sms", {
       state: {
         phone,
-        orderDetails
-      }
+        orderDetails,
+      },
     });
   };
 

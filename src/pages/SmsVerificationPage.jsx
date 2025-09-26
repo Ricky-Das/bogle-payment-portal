@@ -30,14 +30,14 @@ function SmsVerificationPage() {
     e.preventDefault();
     if (code.length === 6) {
       // Simulate successful authentication by setting a token
-      localStorage.setItem('accessToken', 'demo-token-' + Date.now());
-      
+      localStorage.setItem("accessToken", "demo-token-" + Date.now());
+
       // Navigate to payment method selection with order details
-      navigate("/payment-method", { 
-        state: { 
+      navigate("/payment-method", {
+        state: {
           phone,
-          orderDetails
-        } 
+          orderDetails,
+        },
       });
     }
   };

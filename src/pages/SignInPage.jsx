@@ -21,7 +21,7 @@ function SignInPage() {
   const handleContinuePhone = () => {
     // Pass the order details along with authentication flow
     const orderDetails = location.state?.orderDetails;
-    
+
     // Dummy existing user check – treat numbers ending with even digit as existing
     const digits = phone.replace(/\D/g, "");
     const isExisting = digits && parseInt(digits.slice(-1), 10) % 2 === 0;
@@ -29,18 +29,18 @@ function SignInPage() {
     if (isSignUp || !isExisting) {
       // New user - go to personal info collection
       navigate("/personal-info", {
-        state: { 
+        state: {
           phone,
-          orderDetails
+          orderDetails,
         },
       });
     } else {
       // Existing user - go to password/SMS verification
       navigate("/password", {
-        state: { 
-          mode: "enter", 
+        state: {
+          mode: "enter",
           phone,
-          orderDetails
+          orderDetails,
         },
       });
     }
@@ -49,11 +49,11 @@ function SignInPage() {
   const handleOAuth = (provider) => {
     const orderDetails = location.state?.orderDetails;
     alert(`${provider} OAuth not implemented – continuing flow.`);
-    navigate("/sms", { 
-      state: { 
+    navigate("/sms", {
+      state: {
         phone,
-        orderDetails
-      } 
+        orderDetails,
+      },
     });
   };
 
@@ -64,7 +64,9 @@ function SignInPage() {
           {isSignUp ? "Create Account" : "Sign In"}
         </h2>
         <p className="text-gray-600 mt-2">
-          {isSignUp ? "Join Bogle to complete your purchase" : "Welcome back to Bogle"}
+          {isSignUp
+            ? "Join Bogle to complete your purchase"
+            : "Welcome back to Bogle"}
         </p>
       </div>
 
@@ -89,7 +91,9 @@ function SignInPage() {
             <div className="w-full border-t border-gray-300" />
           </div>
           <div className="relative flex justify-center text-sm">
-            <span className="px-2 bg-white text-gray-500">Or continue with</span>
+            <span className="px-2 bg-white text-gray-500">
+              Or continue with
+            </span>
           </div>
         </div>
 
@@ -112,10 +116,9 @@ function SignInPage() {
           onClick={() => setIsSignUp(!isSignUp)}
           className="text-primary hover:text-emerald-600 text-sm font-medium"
         >
-          {isSignUp 
-            ? "Already have an account? Sign in" 
-            : "Don't have an account? Sign up"
-          }
+          {isSignUp
+            ? "Already have an account? Sign in"
+            : "Don't have an account? Sign up"}
         </button>
       </div>
     </div>

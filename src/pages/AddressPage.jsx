@@ -88,16 +88,16 @@ const AddressPage = () => {
       }
     }
 
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
-      [name]: formattedValue
+      [name]: formattedValue,
     }));
 
     // Clear error when user starts typing
     if (errors[name]) {
-      setErrors(prev => ({
+      setErrors((prev) => ({
         ...prev,
-        [name]: ""
+        [name]: "",
       }));
     }
   };
@@ -134,8 +134,8 @@ const AddressPage = () => {
           phone,
           personalInfo,
           address: formData,
-          orderDetails
-        }
+          orderDetails,
+        },
       });
     }
   };
@@ -149,144 +149,155 @@ const AddressPage = () => {
       <OnboardingProgress currentStep={3} />
       <div className="max-w-md mx-auto bg-white rounded-xl shadow p-8 space-y-6">
         <div className="text-center">
-        <h2 className="text-2xl font-bold text-gray-900">Address Information</h2>
-        <p className="text-gray-600 mt-2">
-          Please provide your current residential address
-        </p>
-      </div>
-
-      <div className="space-y-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Street Address *
-          </label>
-          <input
-            type="text"
-            name="street1"
-            value={formData.street1}
-            onChange={handleInputChange}
-            className={`w-full px-4 py-3 border rounded-lg focus:ring-primary focus:border-primary ${
-              errors.street1 ? "border-red-500" : "border-gray-300"
-            }`}
-            placeholder="123 Main Street"
-          />
-          {errors.street1 && (
-            <p className="text-red-500 text-sm mt-1">{errors.street1}</p>
-          )}
+          <h2 className="text-2xl font-bold text-gray-900">
+            Address Information
+          </h2>
+          <p className="text-gray-600 mt-2">
+            Please provide your current residential address
+          </p>
         </div>
 
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Apartment, Suite, etc. (Optional)
-          </label>
-          <input
-            type="text"
-            name="street2"
-            value={formData.street2}
-            onChange={handleInputChange}
-            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-primary focus:border-primary"
-            placeholder="Apt 4B"
-          />
-        </div>
-
-        <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              City *
+              Street Address *
             </label>
             <input
               type="text"
-              name="city"
-              value={formData.city}
+              name="street1"
+              value={formData.street1}
               onChange={handleInputChange}
               className={`w-full px-4 py-3 border rounded-lg focus:ring-primary focus:border-primary ${
-                errors.city ? "border-red-500" : "border-gray-300"
+                errors.street1 ? "border-red-500" : "border-gray-300"
               }`}
-              placeholder="New York"
+              placeholder="123 Main Street"
             />
-            {errors.city && (
-              <p className="text-red-500 text-sm mt-1">{errors.city}</p>
+            {errors.street1 && (
+              <p className="text-red-500 text-sm mt-1">{errors.street1}</p>
             )}
           </div>
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              State *
+              Apartment, Suite, etc. (Optional)
             </label>
-            <select
-              name="state"
-              value={formData.state}
+            <input
+              type="text"
+              name="street2"
+              value={formData.street2}
+              onChange={handleInputChange}
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-primary focus:border-primary"
+              placeholder="Apt 4B"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                City *
+              </label>
+              <input
+                type="text"
+                name="city"
+                value={formData.city}
+                onChange={handleInputChange}
+                className={`w-full px-4 py-3 border rounded-lg focus:ring-primary focus:border-primary ${
+                  errors.city ? "border-red-500" : "border-gray-300"
+                }`}
+                placeholder="New York"
+              />
+              {errors.city && (
+                <p className="text-red-500 text-sm mt-1">{errors.city}</p>
+              )}
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                State *
+              </label>
+              <select
+                name="state"
+                value={formData.state}
+                onChange={handleInputChange}
+                className={`w-full px-4 py-3 border rounded-lg focus:ring-primary focus:border-primary ${
+                  errors.state ? "border-red-500" : "border-gray-300"
+                }`}
+              >
+                {states.map((state) => (
+                  <option key={state.code} value={state.code}>
+                    {state.name}
+                  </option>
+                ))}
+              </select>
+              {errors.state && (
+                <p className="text-red-500 text-sm mt-1">{errors.state}</p>
+              )}
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              ZIP Code *
+            </label>
+            <input
+              type="text"
+              name="zipCode"
+              value={formData.zipCode}
               onChange={handleInputChange}
               className={`w-full px-4 py-3 border rounded-lg focus:ring-primary focus:border-primary ${
-                errors.state ? "border-red-500" : "border-gray-300"
+                errors.zipCode ? "border-red-500" : "border-gray-300"
               }`}
-            >
-              {states.map(state => (
-                <option key={state.code} value={state.code}>
-                  {state.name}
-                </option>
-              ))}
-            </select>
-            {errors.state && (
-              <p className="text-red-500 text-sm mt-1">{errors.state}</p>
+              placeholder="12345"
+              maxLength="10"
+            />
+            {errors.zipCode && (
+              <p className="text-red-500 text-sm mt-1">{errors.zipCode}</p>
             )}
           </div>
         </div>
 
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            ZIP Code *
-          </label>
-          <input
-            type="text"
-            name="zipCode"
-            value={formData.zipCode}
-            onChange={handleInputChange}
-            className={`w-full px-4 py-3 border rounded-lg focus:ring-primary focus:border-primary ${
-              errors.zipCode ? "border-red-500" : "border-gray-300"
-            }`}
-            placeholder="12345"
-            maxLength="10"
-          />
-          {errors.zipCode && (
-            <p className="text-red-500 text-sm mt-1">{errors.zipCode}</p>
-          )}
-        </div>
-      </div>
-
-      <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-        <div className="flex items-start">
-          <div className="flex-shrink-0">
-            <svg className="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
-              <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-            </svg>
-          </div>
-          <div className="ml-3">
-            <h3 className="text-sm font-medium text-yellow-800">Important</h3>
-            <div className="mt-2 text-sm text-yellow-700">
-              <p>
-                Please ensure your address matches your bank account and government-issued ID. 
-                This helps us verify your identity and prevent fraud.
-              </p>
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+          <div className="flex items-start">
+            <div className="flex-shrink-0">
+              <svg
+                className="h-5 w-5 text-yellow-400"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+              >
+                <path
+                  fillRule="evenodd"
+                  d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
+                  clipRule="evenodd"
+                />
+              </svg>
+            </div>
+            <div className="ml-3">
+              <h3 className="text-sm font-medium text-yellow-800">Important</h3>
+              <div className="mt-2 text-sm text-yellow-700">
+                <p>
+                  Please ensure your address matches your bank account and
+                  government-issued ID. This helps us verify your identity and
+                  prevent fraud.
+                </p>
+              </div>
             </div>
           </div>
         </div>
-      </div>
 
-      <div className="flex gap-4">
-        <button
-          onClick={handleBack}
-          className="flex-1 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium"
-        >
-          Back
-        </button>
-        <button
-          onClick={handleContinue}
-          className="flex-1 py-3 bg-primary text-white rounded-lg hover:bg-emerald-600 font-medium"
-        >
-          Continue
-        </button>
-      </div>
+        <div className="flex gap-4">
+          <button
+            onClick={handleBack}
+            className="flex-1 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium"
+          >
+            Back
+          </button>
+          <button
+            onClick={handleContinue}
+            className="flex-1 py-3 bg-primary text-white rounded-lg hover:bg-emerald-600 font-medium"
+          >
+            Continue
+          </button>
+        </div>
       </div>
     </div>
   );
