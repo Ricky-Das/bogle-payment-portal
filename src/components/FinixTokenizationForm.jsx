@@ -16,6 +16,54 @@ const FINIX_FRAUD_SDK_URL = import.meta.env.VITE_FINIX_FRAUD_SDK_URL || "";
 const FINIX_FRAUD_ENABLED =
   (import.meta.env.VITE_FINIX_FRAUD_ENABLED ?? "true") !== "false";
 
+async function initializeFinixAuthWithRetry(
+  finixGlobal,
+  retries = 3,
+  delay = 1000
+) {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      console.log(`Initializing Finix Auth (attempt ${attempt}/${retries})...`);
+
+      const finixAuth = finixGlobal.Auth(
+        FINIX_ENVIRONMENT,
+        FINIX_MERCHANT_ID,
+        (sessionKey) => {
+          try {
+            if (sessionKey) window.FINIX_FRAUD_SESSION_ID = sessionKey;
+          } catch {}
+          console.log(
+            "Finix Auth initialized with session key:",
+            sessionKey ? "present" : "empty"
+          );
+        }
+      );
+
+      // Wait briefly and check if session key is available
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
+      if (typeof finixAuth.getSessionKey === "function") {
+        const sessionKey = finixAuth.getSessionKey();
+        if (sessionKey) {
+          console.log("Finix Auth service initialized successfully");
+          return finixAuth;
+        }
+      }
+
+      // If no session key yet, store auth and continue
+      console.log("Finix Auth initialized, waiting for session key...");
+      return finixAuth;
+    } catch (error) {
+      console.warn(`Finix Auth init attempt ${attempt} failed:`, error);
+      if (attempt === retries) {
+        console.error("All Finix Auth initialization attempts failed");
+        throw error;
+      }
+      await new Promise((resolve) => setTimeout(resolve, delay * attempt));
+    }
+  }
+}
+
 function loadScriptOnce(src) {
   return new Promise((resolve, reject) => {
     if (!src) return resolve(false);
@@ -77,8 +125,13 @@ const FinixTokenizationForm = forwardRef(function FinixTokenizationForm(
   const [isReady, setIsReady] = useState(false);
   const finixInstanceRef = useRef(null);
   const finixAuthRef = useRef(null);
+  const initStartedRef = useRef(false);
 
   useEffect(() => {
+    // Prevent double initialization in React StrictMode / HMR
+    if (initStartedRef.current) return;
+    initStartedRef.current = true;
+
     let cancelled = false;
     async function init() {
       try {
@@ -99,27 +152,13 @@ const FinixTokenizationForm = forwardRef(function FinixTokenizationForm(
         FINIX_MERCHANT_ID
       ) {
         try {
-          console.log("Initializing Finix Auth service for fraud detection...");
-
-          // Initialize Auth service with merchant ID and callback
-          const finixAuth = finixGlobal.Auth(
-            FINIX_ENVIRONMENT,
-            FINIX_MERCHANT_ID,
-            (sessionKey) => {
-              try {
-                if (sessionKey) window.FINIX_FRAUD_SESSION_ID = sessionKey;
-              } catch {}
-              console.log(
-                "Finix Auth initialized with session key:",
-                sessionKey ? "present" : "empty"
-              );
-            }
-          );
-
+          const finixAuth = await initializeFinixAuthWithRetry(finixGlobal);
           finixAuthRef.current = finixAuth;
-          console.log("Finix Auth service initialized successfully");
         } catch (error) {
-          console.warn("Failed to initialize Finix Auth service:", error);
+          console.warn(
+            "Failed to initialize Finix Auth service after retries:",
+            error
+          );
         }
       } else {
         if (!FINIX_FRAUD_ENABLED) {
@@ -203,6 +242,7 @@ const FinixTokenizationForm = forwardRef(function FinixTokenizationForm(
       cancelled = true;
       finixInstanceRef.current = null;
       finixAuthRef.current = null;
+      initStartedRef.current = false;
     };
   }, [sdkUrl]);
 
@@ -301,7 +341,7 @@ const FinixTokenizationForm = forwardRef(function FinixTokenizationForm(
         }, 400);
       });
     },
-    getFraudSessionId() {
+    async getFraudSessionId(timeout = 5000) {
       // Use the properly initialized Finix Auth service
       const finixAuth = finixAuthRef.current;
 
@@ -317,33 +357,37 @@ const FinixTokenizationForm = forwardRef(function FinixTokenizationForm(
         return undefined;
       }
 
-      try {
-        // Standard Finix Auth method: getSessionKey()
-        if (typeof finixAuth.getSessionKey === "function") {
-          const sessionKey = finixAuth.getSessionKey();
-          console.log(
-            "Fraud session key obtained:",
-            sessionKey ? "present" : "empty"
-          );
-          return sessionKey;
-        }
+      // Poll for session key with timeout
+      const startTime = Date.now();
+      while (Date.now() - startTime < timeout) {
+        try {
+          // Standard Finix Auth method: getSessionKey()
+          if (typeof finixAuth.getSessionKey === "function") {
+            const sessionKey = finixAuth.getSessionKey();
+            if (sessionKey) {
+              console.log("Fraud session key obtained:", "present");
+              return sessionKey;
+            }
+          }
 
-        // Alternative method names
-        if (typeof finixAuth.getSessionId === "function") {
-          const sessionId = finixAuth.getSessionId();
-          console.log(
-            "Fraud session ID obtained:",
-            sessionId ? "present" : "empty"
-          );
-          return sessionId;
-        }
+          // Alternative method names
+          if (typeof finixAuth.getSessionId === "function") {
+            const sessionId = finixAuth.getSessionId();
+            if (sessionId) {
+              console.log("Fraud session ID obtained:", "present");
+              return sessionId;
+            }
+          }
 
-        console.warn("Finix Auth loaded but no session key method found");
-        console.log("Available Auth methods:", Object.keys(finixAuth));
-      } catch (error) {
-        console.warn("Error getting fraud session key:", error);
+          // Wait before retrying
+          await new Promise((resolve) => setTimeout(resolve, 200));
+        } catch (error) {
+          console.warn("Error getting fraud session key:", error);
+          break;
+        }
       }
 
+      console.warn("Fraud session ID not available after timeout");
       return undefined;
     },
     isReady: () => isReady,
@@ -357,15 +401,29 @@ const FinixTokenizationForm = forwardRef(function FinixTokenizationForm(
           className="w-full border rounded-md bg-white p-3 min-h-[44px]"
         />
       </div>
-      {(!DEFAULT_FINIX_SDK_URL ||
-        !FINIX_APPLICATION_ID ||
-        !FINIX_MERCHANT_ID) && (
+      {(!FINIX_APPLICATION_ID || !FINIX_MERCHANT_ID) && (
         <p className="mt-2 text-xs text-gray-500">
-          Finix tokenization is not fully configured. Define VITE_FINIX_SDK_URL,
-          VITE_FINIX_APPLICATION_ID, and VITE_FINIX_MERCHANT_ID to enable
+          Finix tokenization is not fully configured. Define
+          VITE_FINIX_APPLICATION_ID and VITE_FINIX_MERCHANT_ID to enable
           tokenization and fraud detection.
         </p>
       )}
+      {FINIX_APPLICATION_ID &&
+        FINIX_MERCHANT_ID &&
+        import.meta.env.MODE === "development" && (
+          <div className="mt-2 text-xs text-gray-600 bg-gray-50 p-2 rounded">
+            <div>
+              <strong>Fraud Detection:</strong>{" "}
+              {FINIX_FRAUD_ENABLED ? "Enabled" : "Disabled"}
+            </div>
+            <div>
+              <strong>Environment:</strong> {FINIX_ENVIRONMENT}
+            </div>
+            <div>
+              <strong>Merchant:</strong> {FINIX_MERCHANT_ID}
+            </div>
+          </div>
+        )}
     </div>
   );
 });

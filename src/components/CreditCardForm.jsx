@@ -170,13 +170,22 @@ const CreditCardForm = ({ onSuccess, onError, amount = 52.82 }) => {
       }
 
       // 3) Collect fraud session ID via Finix Fraud SDK for risk assessment
-      const fraudSessionId =
-        (tokenizationRef.current &&
-          typeof tokenizationRef.current.getFraudSessionId === "function" &&
-          tokenizationRef.current.getFraudSessionId()) ||
-        undefined;
+      setProcessingStep("Collecting fraud session...");
+      let fraudSessionId;
+
+      if (
+        tokenizationRef.current &&
+        typeof tokenizationRef.current.getFraudSessionId === "function"
+      ) {
+        fraudSessionId = await tokenizationRef.current.getFraudSessionId();
+      }
 
       if (!fraudSessionId) {
+        if (import.meta.env.VITE_FINIX_FRAUD_ENABLED !== "false") {
+          throw new Error(
+            "Fraud detection is required but session ID unavailable. Please refresh the page and try again."
+          );
+        }
         console.info(
           "No fraud session ID - proceeding without enhanced risk data"
         );
